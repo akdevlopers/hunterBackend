@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import {
   Printer,
@@ -26,58 +26,80 @@ export default function ProductPage() {
   const [limit, setLimit] = useState(10);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
-  const loadData = async (currentPage = page, currentLimit = limit) => {
-    setLoading(true);
-    const [prodsRes, cats] = await Promise.all([
-      api.getProducts({ page: currentPage, limit: currentLimit }),
-      api.getCategories(),
-    ]);
+  // Debounce search query by 350ms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [search]);
 
-    if (prodsRes && typeof prodsRes === "object" && !Array.isArray(prodsRes)) {
-      setProducts(prodsRes.products || []);
-      setTotal(prodsRes.total || 0);
-      setTotalPages(prodsRes.totalPages || 1);
-      setPage(prodsRes.page || currentPage);
-      setLimit(prodsRes.limit || currentLimit);
-    } else {
-      const list = Array.isArray(prodsRes) ? prodsRes : [];
-      setProducts(list);
-      setTotal(list.length);
-      setTotalPages(Math.ceil(list.length / currentLimit) || 1);
-    }
+  const loadData = useCallback(
+    async (currentPage = page, currentLimit = limit, currentSearch = debouncedSearch) => {
+      setLoading(true);
+      const [prodsRes, cats] = await Promise.all([
+        api.getProducts({
+          page: currentPage,
+          limit: currentLimit,
+          search: currentSearch.trim(),
+          search_key: currentSearch.trim(),
+        }),
+        api.getCategories(),
+      ]);
 
-    setCategories(cats || []);
-    setLoading(false);
-  };
+      if (prodsRes && typeof prodsRes === "object" && !Array.isArray(prodsRes)) {
+        setProducts(prodsRes.products || []);
+        setTotal(prodsRes.total || 0);
+        setTotalPages(prodsRes.totalPages || 1);
+        setPage(prodsRes.page || currentPage);
+        setLimit(prodsRes.limit || currentLimit);
+      } else {
+        const list = Array.isArray(prodsRes) ? prodsRes : [];
+        setProducts(list);
+        setTotal(list.length);
+        setTotalPages(Math.ceil(list.length / currentLimit) || 1);
+      }
+
+      setCategories(cats || []);
+      setLoading(false);
+    },
+    [page, limit, debouncedSearch]
+  );
+
+  // Trigger search whenever debounced search query changes
+  useEffect(() => {
+    setPage(1);
+    loadData(1, limit, debouncedSearch);
+  }, [debouncedSearch]);
 
   const handlePageChange = (newPage) => {
     setPage(newPage);
-    loadData(newPage, limit);
+    loadData(newPage, limit, debouncedSearch);
   };
 
   const handleLimitChange = (newLimit) => {
     setLimit(newLimit);
     setPage(1);
-    loadData(1, newLimit);
+    loadData(1, newLimit, debouncedSearch);
   };
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  const handleSearchChange = (val) => {
+    setSearch(val);
+  };
 
   const handleDeleteConfirm = async () => {
-    console.log(deleteId);
     if (deleteId) {
       const res = await api.deleteProduct(deleteId);
-      console.log(res);
       setDeleteId(null);
       if (res && (res.success || res.status === "success")) {
         setToastMessage(res.message || "Product deleted successfully.");
       } else {
         setToastMessage(res?.message || "Failed to delete product.");
       }
-      loadData(page, limit);
+      loadData(page, limit, debouncedSearch);
       setTimeout(() => setToastMessage(""), 3500);
     }
   };
@@ -101,14 +123,14 @@ export default function ProductPage() {
           {/* Top Right Action Buttons (Print, Grid/List Toggle, Add) */}
           <div className="flex items-center gap-1.5">
             {/* Print Button */}
-            <button
+            {/* <button
               type="button"
               onClick={() => window.print()}
               className="p-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-xs cursor-pointer"
               title="Print Products"
             >
               <Printer className="w-4 h-4" />
-            </button>
+            </button> */}
 
             {/* Grid / List View Toggle Button */}
             <button
@@ -143,7 +165,7 @@ export default function ProductPage() {
           </div>
         )}
 
-        {/* Product Table / Grid with the exact columns and views */}
+        {/* Product Table / Grid with debounced search */}
         <ProductTable
           products={products}
           categories={categories}
@@ -152,14 +174,14 @@ export default function ProductPage() {
           limit={limit}
           total={total}
           totalPages={totalPages}
+          search={search}
+          onSearchChange={handleSearchChange}
           onPageChange={handlePageChange}
           onLimitChange={handleLimitChange}
           onDelete={(id) => setDeleteId(id)}
-          onRefresh={() => loadData(page, limit)}
+          onRefresh={() => loadData(page, limit, debouncedSearch)}
           viewMode={viewMode}
         />
-
-
 
         {/* Delete Confirmation Modal */}
         <Modal

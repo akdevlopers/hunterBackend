@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import {
   Search,
@@ -10,10 +10,89 @@ import {
   ShoppingBag,
   Receipt,
   Barcode,
+  QrCode,
+  Camera,
+  CheckCircle2,
+  Sparkles,
+  Zap,
 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { POSPayModal } from "@/components/pos/POSPayModal";
+import { POSCameraScannerModal } from "@/components/pos/POSCameraScannerModal";
 import { api } from "@/lib/api";
+
+// Web Audio API Beep Feedback
+function playSound(type = "success") {
+  try {
+    if (typeof window === "undefined") return;
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    if (type === "success") {
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(1046.5, ctx.currentTime); // C6
+      osc.frequency.setValueAtTime(1318.5, ctx.currentTime + 0.08); // E6
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.18);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.18);
+    } else {
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(220, ctx.currentTime);
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.25);
+    }
+  } catch (e) {
+    // AudioContext failure fallback
+  }
+}
+
+// Extract SKU or Code from scanned QR raw content (JSON, URL, or plain SKU string)
+function parseScannedCode(raw) {
+  if (!raw) return "";
+  const str = String(raw).trim();
+
+  // 1. If scanned code is JSON payload (e.g. {"sku":"...", "id":123})
+  if (str.startsWith("{") && str.endsWith("}")) {
+    try {
+      const obj = JSON.parse(str);
+      return (
+        obj.sku ||
+        obj.sku_code ||
+        obj.skuCode ||
+        obj.code ||
+        obj.id ||
+        obj.product_id ||
+        str
+      );
+    } catch (e) { }
+  }
+
+  // 2. If scanned code is URL (e.g. https://domain.com/product?sku=ABC or /product/123)
+  if (str.startsWith("http://") || str.startsWith("https://")) {
+    try {
+      const url = new URL(str);
+      const skuParam =
+        url.searchParams.get("sku") ||
+        url.searchParams.get("code") ||
+        url.searchParams.get("id") ||
+        url.searchParams.get("sku_code");
+      if (skuParam) return skuParam.trim();
+
+      const parts = url.pathname.split("/").filter(Boolean);
+      if (parts.length > 0) return parts[parts.length - 1];
+    } catch (e) { }
+  }
+
+  return str;
+}
 
 export default function POSPage() {
   const [products, setProducts] = useState([]);
@@ -27,24 +106,30 @@ export default function POSPage() {
   const [gst, setGst] = useState("");
   const [notes, setNotes] = useState("");
 
-  // Pay Modal state
+  // Scanner & Modal States
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
   const [payModalData, setPayModalData] = useState(null);
+  const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
 
   const searchInputRef = useRef(null);
 
+  // Auto-focus search input on mount and on return
+  useEffect(() => {
+    searchInputRef.current?.focus();
+  }, []);
+
   useEffect(() => {
     async function load() {
-      const prods = await api.getProducts();
+      const prods = await api.getProducts({ limit: 200 });
       const custs = await api.getCustomers({ limit: 100 });
-      setProducts(prods?.data || (Array.isArray(prods) ? prods : []));
+      setProducts(prods?.products || prods?.data || (Array.isArray(prods) ? prods : []));
       setCustomers(custs?.data || (Array.isArray(custs) ? custs : []));
     }
     load();
   }, []);
 
-  // Handle debounced SKU search calling backend API /admin/products/skusearch
+  // Debounced SKU search for manual typing
   useEffect(() => {
     if (!skuSearch.trim()) {
       setSkuSuggestions([]);
@@ -54,143 +139,277 @@ export default function POSPage() {
 
     setIsSearching(true);
     const timer = setTimeout(async () => {
-      const apiResults = await api.searchProductBySku(skuSearch.trim());
+      const q = skuSearch.trim();
+      const apiResults = await api.searchProductBySku(q);
       if (apiResults && apiResults.length > 0) {
         setSkuSuggestions(apiResults);
       } else {
-        // Fallback to searching loaded local products list if API yields no data
-        const q = skuSearch.toLowerCase().trim();
+        // Fallback to searching loaded local products list
+        const lower = q.toLowerCase();
         const matches = products.filter((p) => {
-          const matchSku = p.sku_codes && p.sku_codes.some((s) => s.toLowerCase().includes(q));
-          const matchName = p.name?.toLowerCase().includes(q);
-          const matchCategory = p.category?.toLowerCase().includes(q);
+          const matchSku = p.sku_codes && p.sku_codes.some((s) => s.toLowerCase().includes(lower));
+          const matchName = p.name?.toLowerCase().includes(lower);
+          const matchCategory = p.category?.toLowerCase().includes(lower);
           return matchSku || matchName || matchCategory;
         });
         setSkuSuggestions(matches.slice(0, 8));
       }
       setIsSearching(false);
-    }, 350);
+    }, 300);
 
     return () => clearTimeout(timer);
   }, [skuSearch, products]);
 
-  // Add Product to Cart from SKU Search / Product list with stock validation
-  const handleAddToCart = (productItem, variantOverride = null) => {
-    const productId = productItem.productId || productItem.product_id || productItem.id || Date.now();
-    const productName = productItem.productName || productItem.product_name || productItem.name || "Product";
-    const variant =
-      variantOverride ||
-      productItem.variant ||
-      productItem.variant_name ||
-      (productItem.variants && productItem.variants.length > 0
-        ? typeof productItem.variants[0] === "object"
-          ? productItem.variants[0].variant || productItem.variants[0].name
-          : productItem.variants[0]
-        : "Standard");
-    const variantId =
-      productItem.productVariantId ||
-      productItem.product_variant_id ||
-      productItem.variantId ||
-      productItem.variant_id ||
-      null;
-    const price = Number(productItem.price || productItem.sale_price) || 0;
-    const skuCode =
-      productItem.sku ||
-      productItem.sku_code ||
-      (productItem.sku_codes ? productItem.sku_codes.join(", ") : "");
+  // Add Product to Cart with stock validation
+  const handleAddToCart = useCallback(
+    (productItem, variantOverride = null) => {
+      const productId =
+        productItem.productId || productItem.product_id || productItem.id || Date.now();
+      const productName =
+        productItem.productName || productItem.product_name || productItem.name || "Product";
+      const variant =
+        variantOverride ||
+        productItem.variant ||
+        productItem.variant_name ||
+        (productItem.variants && productItem.variants.length > 0
+          ? typeof productItem.variants[0] === "object"
+            ? productItem.variants[0].variant || productItem.variants[0].name
+            : productItem.variants[0]
+          : "Standard");
+      const variantId =
+        productItem.productVariantId ||
+        productItem.product_variant_id ||
+        productItem.variantId ||
+        productItem.variant_id ||
+        null;
+      const price = Number(productItem.price || productItem.sale_price) || 0;
+      const skuCode =
+        productItem.sku ||
+        productItem.sku_code ||
+        (productItem.sku_codes ? productItem.sku_codes.join(", ") : "");
 
-    // Resolve stock from all possible keys
-    const rawStock =
-      productItem.stock ??
-      productItem.available_stock ??
-      productItem.variant_stock ??
-      productItem.total_stock ??
-      productItem.current_stock ??
-      productItem.quantity ??
-      productItem.product_stock ??
-      (productItem.variants && productItem.variants.length > 0 && typeof productItem.variants[0] === "object"
-        ? productItem.variants[0].stock
-        : null);
+      // Resolve stock
+      const rawStock =
+        productItem.stock ??
+        productItem.available_stock ??
+        productItem.variant_stock ??
+        productItem.total_stock ??
+        productItem.current_stock ??
+        productItem.quantity ??
+        productItem.product_stock ??
+        (productItem.variants &&
+        productItem.variants.length > 0 &&
+        typeof productItem.variants[0] === "object"
+          ? productItem.variants[0].stock
+          : null);
 
-    let availableStock =
-      rawStock !== undefined && rawStock !== null && rawStock !== "" && !isNaN(Number(rawStock))
-        ? Number(rawStock)
-        : null;
-
-    // Fallback search in local loaded products if availableStock is null
-    if (availableStock === null && products.length > 0) {
-      const matchLocal = products.find(
-        (p) => String(p.id) === String(productId) || (skuCode && p.sku_codes && p.sku_codes.includes(skuCode))
-      );
-      if (matchLocal) {
-        const localStock =
-          matchLocal.stock ?? matchLocal.total_stock ?? matchLocal.available_stock ?? matchLocal.quantity;
-        if (localStock !== undefined && localStock !== null && !isNaN(Number(localStock))) {
-          availableStock = Number(localStock);
-        }
-      }
-    }
-
-    // Check if completely out of stock
-    if (availableStock !== null && availableStock <= 0) {
-      setToastMessage(`⚠️ Out of stock! "${productName}" is currently unavailable.`);
-      setTimeout(() => setToastMessage(""), 4000);
-      return;
-    }
-
-    // Check existing item in cart
-    const existingIdx = cart.findIndex(
-      (item) =>
-        String(item.product_id) === String(productId) &&
-        (variantId ? String(item.variant_id) === String(variantId) : item.variant === variant)
-    );
-
-    if (existingIdx > -1) {
-      const item = cart[existingIdx];
-      const stockLimit =
-        availableStock !== null
-          ? availableStock
-          : item.stock !== null && item.stock !== undefined
-          ? item.stock
+      let availableStock =
+        rawStock !== undefined && rawStock !== null && rawStock !== "" && !isNaN(Number(rawStock))
+          ? Number(rawStock)
           : null;
 
-      const currentQty = Number(item.quantity) || 1;
+      // Fallback search in loaded products
+      if (availableStock === null && products.length > 0) {
+        const matchLocal = products.find(
+          (p) =>
+            String(p.id) === String(productId) ||
+            (skuCode && p.sku_codes && p.sku_codes.includes(skuCode))
+        );
+        if (matchLocal) {
+          const localStock =
+            matchLocal.stock ??
+            matchLocal.total_stock ??
+            matchLocal.available_stock ??
+            matchLocal.quantity;
+          if (localStock !== undefined && localStock !== null && !isNaN(Number(localStock))) {
+            availableStock = Number(localStock);
+          }
+        }
+      }
 
-      if (stockLimit !== null && currentQty + 1 > stockLimit) {
-        setToastMessage(`⚠️ Stock limit reached! Only ${stockLimit} unit(s) available for "${productName}".`);
+      // Out of stock check
+      if (availableStock !== null && availableStock <= 0) {
+        playSound("error");
+        setToastMessage(`⚠️ Out of stock! "${productName}" is currently unavailable.`);
         setTimeout(() => setToastMessage(""), 4000);
         return;
       }
 
-      setCart((prev) =>
-        prev.map((it, i) =>
-          i === existingIdx ? { ...it, quantity: currentQty + 1, stock: stockLimit } : it
-        )
-      );
-    } else {
-      setCart((prev) => [
-        ...prev,
-        {
-          id: Date.now() + Math.random(),
-          product_id: productId,
-          variant_id: variantId,
-          name: productName,
-          variant: variant,
-          sku: skuCode,
-          quantity: 1,
-          sale_price: price,
-          purchase_price: productItem.purchase_price || 0,
-          cover_image: productItem.cover_image || "",
-          stock: availableStock,
-        },
-      ]);
-    }
+      // Check existing item in cart
+      setCart((prev) => {
+        const existingIdx = prev.findIndex(
+          (item) =>
+            String(item.product_id) === String(productId) &&
+            (variantId ? String(item.variant_id) === String(variantId) : item.variant === variant)
+        );
 
-    setSkuSearch("");
-    setSkuSuggestions([]);
-  };
+        if (existingIdx > -1) {
+          const item = prev[existingIdx];
+          const stockLimit =
+            availableStock !== null
+              ? availableStock
+              : item.stock !== null && item.stock !== undefined
+              ? item.stock
+              : null;
 
-  // Stepper controls with synchronous stock validation on first click
+          const currentQty = Number(item.quantity) || 1;
+
+          if (stockLimit !== null && currentQty + 1 > stockLimit) {
+            playSound("error");
+            setToastMessage(
+              `⚠️ Stock limit reached! Only ${stockLimit} unit(s) available for "${productName}".`
+            );
+            setTimeout(() => setToastMessage(""), 4000);
+            return prev;
+          }
+
+          playSound("success");
+          setToastMessage(`✓ Added "${productName}" (+1 Qty) to bill.`);
+          setTimeout(() => setToastMessage(""), 3500);
+
+          return prev.map((it, i) =>
+            i === existingIdx ? { ...it, quantity: currentQty + 1, stock: stockLimit } : it
+          );
+        } else {
+          playSound("success");
+          setToastMessage(`✓ Added "${productName}" (₹${price}) to bill.`);
+          setTimeout(() => setToastMessage(""), 3500);
+
+          return [
+            ...prev,
+            {
+              id: Date.now() + Math.random(),
+              product_id: productId,
+              variant_id: variantId,
+              name: productName,
+              variant: variant,
+              sku: skuCode,
+              quantity: 1,
+              sale_price: price,
+              purchase_price: productItem.purchase_price || 0,
+              cover_image: productItem.cover_image || "",
+              stock: availableStock,
+            },
+          ];
+        }
+      });
+
+      // Clear input and suggestions, re-focus
+      setSkuSearch("");
+      setSkuSuggestions([]);
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 50);
+    },
+    [products]
+  );
+
+  // Direct Barcode / QR Code Scanner & Enter Key handler: instantly finds product and adds to billing
+  const handleDirectScanOrSubmit = useCallback(
+    async (rawCode) => {
+      const code = parseScannedCode(rawCode);
+      if (!code) return;
+
+      setIsSearching(true);
+
+      try {
+        // 1. First check loaded local products for exact SKU or ID match
+        const lowerCode = code.toLowerCase();
+        let matchedItem = null;
+
+        const exactLocal = products.find((p) => {
+          const matchesSkuArray =
+            Array.isArray(p.sku_codes) &&
+            p.sku_codes.some((s) => String(s).toLowerCase() === lowerCode);
+          const matchesDirectSku =
+            p.sku && String(p.sku).toLowerCase() === lowerCode;
+          const matchesId = String(p.id) === String(code);
+          return matchesSkuArray || matchesDirectSku || matchesId;
+        });
+
+        if (exactLocal) {
+          matchedItem = exactLocal;
+        } else {
+          // 2. Query backend SKU search endpoint
+          const apiResults = await api.searchProductBySku(code);
+          if (apiResults && apiResults.length > 0) {
+            // Check if there is an exact SKU match among results
+            const exactApi = apiResults.find(
+              (r) =>
+                (r.sku && String(r.sku).toLowerCase() === lowerCode) ||
+                (r.sku_code && String(r.sku_code).toLowerCase() === lowerCode)
+            );
+            matchedItem = exactApi || apiResults[0];
+          } else {
+            // 3. Check partial match in local products
+            const partialLocal = products.find(
+              (p) =>
+                p.name?.toLowerCase().includes(lowerCode) ||
+                (p.sku_codes &&
+                  p.sku_codes.some((s) => s.toLowerCase().includes(lowerCode)))
+            );
+            if (partialLocal) {
+              matchedItem = partialLocal;
+            }
+          }
+        }
+
+        if (matchedItem) {
+          handleAddToCart(matchedItem);
+        } else {
+          playSound("error");
+          setToastMessage(`⚠️ Product not found for scanned SKU/Barcode: "${code}"`);
+          setTimeout(() => setToastMessage(""), 4500);
+          setSkuSearch("");
+          setSkuSuggestions([]);
+          searchInputRef.current?.focus();
+        }
+      } catch (err) {
+        console.error("Scan submit error:", err);
+        playSound("error");
+        setToastMessage(`⚠️ Error searching product code: "${code}"`);
+        setTimeout(() => setToastMessage(""), 4000);
+      } finally {
+        setIsSearching(false);
+      }
+    },
+    [products, handleAddToCart]
+  );
+
+  // Global scanner listener: If cashier scans without first focusing the input box, focus and route to search input
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      // Don't intercept if user is inside a modal or typing in inputs like notes, discount, gst
+      if (isPayModalOpen || isCameraScannerOpen) return;
+      const activeEl = document.activeElement;
+      const isInput =
+        activeEl &&
+        (activeEl.tagName === "INPUT" ||
+          activeEl.tagName === "TEXTAREA" ||
+          activeEl.tagName === "SELECT");
+
+      if (isInput && activeEl !== searchInputRef.current) {
+        return;
+      }
+
+      // If user typed alphanumeric character and search input wasn't focused, focus it
+      if (
+        !isInput &&
+        e.key.length === 1 &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        searchInputRef.current
+      ) {
+        searchInputRef.current.focus();
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [isPayModalOpen, isCameraScannerOpen]);
+
+  // Stepper controls
   const handleUpdateQty = (idx, delta) => {
     const item = cart[idx];
     if (!item) return;
@@ -203,7 +422,6 @@ export default function POSPage() {
       return;
     }
 
-    // Validate stock when clicking (+) button immediately on first click
     if (delta > 0) {
       const maxStock =
         item.stock !== null && item.stock !== undefined && !isNaN(Number(item.stock))
@@ -211,7 +429,10 @@ export default function POSPage() {
           : null;
 
       if (maxStock !== null && newQty > maxStock) {
-        setToastMessage(`⚠️ Stock limit reached! Only ${maxStock} unit(s) available for "${item.name}".`);
+        playSound("error");
+        setToastMessage(
+          `⚠️ Stock limit reached! Only ${maxStock} unit(s) available for "${item.name}".`
+        );
         setTimeout(() => setToastMessage(""), 4000);
         return;
       }
@@ -247,10 +468,10 @@ export default function POSPage() {
     selectedCustomerId === "walkin"
       ? { name: "Walk-in Customer", email: "-", mobile: "-" }
       : customers.find((c) => c.id === Number(selectedCustomerId)) || {
-        name: "Walk-in Customer",
-      };
+          name: "Walk-in Customer",
+        };
 
-  // Open PAY Modal matching pos/create.blade.php
+  // Open PAY Modal
   const handleOpenPayModal = () => {
     if (cart.length === 0) return;
 
@@ -281,42 +502,85 @@ export default function POSPage() {
     setGst("");
     setNotes("");
     setTimeout(() => setToastMessage(""), 5000);
+    setTimeout(() => searchInputRef.current?.focus(), 200);
   };
 
   return (
     <AppLayout>
       <div className="space-y-4 font-sans text-slate-800">
-        {/* Top Search Input */}
-        <div className="relative bg-white border border-slate-200 rounded-xl p-2.5 shadow-2xs">
-          <div className="relative">
-            <input
-              ref={searchInputRef}
-              type="text"
-              placeholder="Search by SKU"
-              value={skuSearch}
-              onChange={(e) => setSkuSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && skuSuggestions.length > 0) {
-                  e.preventDefault();
-                  handleAddToCart(skuSuggestions[0]);
-                }
-              }}
-              className="w-full bg-white border border-slate-200 rounded-lg pl-10 pr-8 py-2 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium"
-            />
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-2.5" />
-            {isSearching && (
-              <div className="absolute right-3 top-2.5">
-                <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+        {/* Top Search & Scanner Bar */}
+        <div className="relative bg-white border border-slate-200 rounded-xl p-3 shadow-2xs">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+            {/* Search / Scan Input */}
+            <div className="relative flex-1">
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Scan Barcode / QR code or Search SKU..."
+                value={skuSearch}
+                onChange={(e) => setSkuSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (skuSearch.trim()) {
+                      handleDirectScanOrSubmit(skuSearch.trim());
+                    }
+                  }
+                }}
+                className="w-full bg-white border border-slate-200 rounded-lg pl-10 pr-24 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium transition"
+              />
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+
+              {/* Status Pill in Input */}
+              <div className="absolute right-3 top-2.5 flex items-center gap-1.5 pointer-events-none">
+                {isSearching ? (
+                  <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-[10px] font-semibold text-emerald-700 border border-emerald-200">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Scanner Ready
+                  </span>
+                )}
               </div>
-            )}
+            </div>
+
+            {/* Quick Actions: Direct Camera QR Scan & Add button */}
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  if (skuSearch.trim()) {
+                    handleDirectScanOrSubmit(skuSearch.trim());
+                  } else {
+                    searchInputRef.current?.focus();
+                  }
+                }}
+                className="px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-2xs transition cursor-pointer flex items-center gap-1.5 shrink-0"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                <span>Add Item</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsCameraScannerOpen(true)}
+                className="px-3.5 py-2.5 rounded-lg border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold shadow-2xs transition cursor-pointer flex items-center gap-1.5 shrink-0"
+                title="Open Camera QR & Barcode Scanner"
+              >
+                <Camera className="w-4 h-4 text-emerald-700" />
+                <span className="hidden sm:inline">Camera Scan</span>
+              </button>
+            </div>
           </div>
 
-          {/* SKU Suggestions Dropdown */}
+          {/* SKU Suggestions Dropdown for partial/manual typing */}
           {(skuSuggestions.length > 0 || (skuSearch.trim() && !isSearching)) && (
-            <div className="absolute top-full left-0 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden divide-y divide-slate-100 max-h-72 overflow-y-auto">
+            <div className="absolute top-full left-0 w-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden divide-y divide-slate-100 max-h-72 overflow-y-auto">
               {skuSuggestions.length === 0 ? (
-                <div className="p-3 text-center text-slate-400 text-xs font-medium">
-                  No products found for SKU "{skuSearch}"
+                <div className="p-4 text-center text-slate-400 text-xs font-medium flex flex-col items-center gap-1">
+                  <Barcode className="w-5 h-5 text-slate-300" />
+                  <span>No products found for code "{skuSearch}"</span>
+                  <span className="text-[10px] text-slate-400">Press Enter or Scan with Barcode Gun to search again</span>
                 </div>
               ) : (
                 skuSuggestions.map((p, idx) => {
@@ -331,7 +595,7 @@ export default function POSPage() {
                       className="p-3 flex items-center justify-between hover:bg-emerald-50/70 cursor-pointer transition group"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-8 h-8 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 shrink-0 flex items-center justify-center font-bold text-xs text-emerald-700 bg-emerald-50">
+                        <div className="w-9 h-9 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 shrink-0 flex items-center justify-center font-bold text-xs text-emerald-700 bg-emerald-50">
                           {p.cover_image ? (
                             <img
                               src={p.cover_image}
@@ -344,15 +608,19 @@ export default function POSPage() {
                         </div>
                         <div className="min-w-0">
                           <p className="font-bold text-xs text-slate-900 group-hover:text-emerald-800 truncate">
-                            {productName} <span className="text-slate-500 font-normal">({skuCode || "-"})</span> - <span className="text-emerald-700 font-extrabold">₹{price}</span>
+                            {productName}
+                          </p>
+                          <p className="text-[11px] text-slate-500">
+                            SKU: <span className="font-mono text-slate-700 font-semibold">{skuCode || "-"}</span> | Price:{" "}
+                            <span className="text-emerald-700 font-extrabold">₹{price}</span>
                           </p>
                         </div>
                       </div>
                       <button
                         type="button"
-                        className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold shadow-2xs transition shrink-0 ml-2"
+                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-2xs transition shrink-0 ml-2"
                       >
-                        + Add
+                        + Add to Bill
                       </button>
                     </div>
                   );
@@ -365,16 +633,25 @@ export default function POSPage() {
         {/* Toast Notification */}
         {toastMessage && (
           <div
-            className={`p-3.5 rounded-xl border text-xs font-semibold flex items-center justify-between animate-in fade-in ${toastMessage.startsWith("⚠️")
+            className={`p-3.5 rounded-xl border text-xs font-semibold flex items-center justify-between animate-in fade-in ${
+              toastMessage.startsWith("⚠️")
                 ? "bg-amber-50 border-amber-300 text-amber-900 shadow-2xs"
-                : "bg-emerald-50 border-emerald-200 text-emerald-800"
-              }`}
+                : "bg-emerald-50 border-emerald-200 text-emerald-800 shadow-2xs"
+            }`}
           >
-            <span>{toastMessage.startsWith("⚠️") ? toastMessage : `✓ ${toastMessage}`}</span>
+            <div className="flex items-center gap-2">
+              {!toastMessage.startsWith("⚠️") && (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              )}
+              <span>{toastMessage}</span>
+            </div>
             <button
               onClick={() => setToastMessage("")}
-              className={`${toastMessage.startsWith("⚠️") ? "text-amber-600 hover:text-amber-800" : "text-emerald-500 hover:text-emerald-700"
-                }`}
+              className={`p-1 rounded hover:bg-black/5 ${
+                toastMessage.startsWith("⚠️")
+                  ? "text-amber-600 hover:text-amber-800"
+                  : "text-emerald-500 hover:text-emerald-700"
+              }`}
             >
               ✕
             </button>
@@ -385,7 +662,12 @@ export default function POSPage() {
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4">
           {/* Header Row: Billing Section Title & Customer Dropdown */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-            <h2 className="text-base font-bold text-slate-900">Billing Section</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold text-slate-900">Billing Section</h2>
+              <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-semibold text-[11px]">
+                {cart.length} item{cart.length === 1 ? "" : "s"}
+              </span>
+            </div>
 
             <div className="w-full sm:w-64">
               <select
@@ -396,7 +678,8 @@ export default function POSPage() {
                 <option value="walkin">Walk-in-customer</option>
                 {(Array.isArray(customers) ? customers : customers?.data || []).map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name || `${c.first_name || ""} ${c.last_name || ""}`.trim()} ({c.mobile || c.email || "-"})
+                    {c.name || `${c.first_name || ""} ${c.last_name || ""}`.trim()} (
+                    {c.mobile || c.email || "-"})
                   </option>
                 ))}
               </select>
@@ -422,17 +705,27 @@ export default function POSPage() {
                   {cart.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="py-20 text-center text-slate-400">
-                        <p className="font-semibold text-sm text-slate-500">No Items In Cart</p>
-                        <span className="text-xs text-slate-400">
-                          Search by SKU in the box above to add items to cart.
-                        </span>
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
+                            <Barcode className="w-6 h-6" />
+                          </div>
+                          <p className="font-semibold text-sm text-slate-700">No Items In Cart</p>
+                          <span className="text-xs text-slate-400 max-w-sm">
+                            Scan a product QR code / barcode with scanner gun or camera, or search by SKU above to add products to the bill.
+                          </span>
+                        </div>
                       </td>
                     </tr>
                   ) : (
                     cart.map((item, idx) => (
                       <tr key={item.id} className="hover:bg-slate-50/50 transition">
                         <td className="py-3.5 px-3 font-medium text-slate-800">
-                          {item.name} {item.sku ? <span className="text-slate-500 font-normal">[ sku : {item.sku} ]</span> : ""}
+                          <div>{item.name}</div>
+                          {item.sku && (
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              SKU: {item.sku}
+                            </span>
+                          )}
                         </td>
                         <td className="py-3.5 px-3 text-slate-600 font-medium">
                           {item.variant || "Standard"}
@@ -518,7 +811,7 @@ export default function POSPage() {
                     <tr className="bg-slate-50/50">
                       <td className="p-3 font-bold text-slate-900">Total</td>
                       <td className="p-3 text-right font-extrabold text-slate-900 text-sm">
-                        {grandTotal.toFixed(2)}
+                        ₹{grandTotal.toFixed(2)}
                       </td>
                     </tr>
                     <tr>
@@ -567,6 +860,15 @@ export default function POSPage() {
             </div>
           </div>
         </div>
+
+        {/* Camera QR Code / Barcode Scanner Modal */}
+        <POSCameraScannerModal
+          isOpen={isCameraScannerOpen}
+          onClose={() => setIsCameraScannerOpen(false)}
+          onScanSuccess={(scannedCode) => {
+            handleDirectScanOrSubmit(scannedCode);
+          }}
+        />
 
         {/* POS Payment & Invoice Preview Modal */}
         <POSPayModal

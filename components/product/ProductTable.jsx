@@ -49,36 +49,56 @@ export function ProductTable({
   limit = 10,
   total = 0,
   totalPages = 1,
+  search = "",
+  onSearchChange,
   onPageChange,
   onLimitChange,
   onDelete,
   onRefresh,
   viewMode = "table", // 'table' | 'grid'
 }) {
-  const [search, setSearch] = useState("");
+  const [localSearch, setLocalSearch] = useState("");
+  const isControlledSearch = onSearchChange !== undefined;
+  const currentSearch = isControlledSearch ? search : localSearch;
+
   const [localPage, setLocalPage] = useState(1);
   const [localLimit, setLocalLimit] = useState(10);
 
-  const handleReset = () => {
-    setSearch("");
-    setLocalPage(1);
-    if (onPageChange) onPageChange(1);
+  const handleSearchInput = (val) => {
+    if (isControlledSearch) {
+      onSearchChange(val);
+    } else {
+      setLocalSearch(val);
+      setLocalPage(1);
+    }
   };
 
-  // Filter products by Name, SKU, Price, or Category
-  const filtered = products.filter((prod) => {
-    const q = search.toLowerCase().trim();
-    if (!q) return true;
+  const handleReset = () => {
+    if (isControlledSearch) {
+      onSearchChange("");
+    } else {
+      setLocalSearch("");
+    }
+    if (onPageChange) onPageChange(1);
+    else setLocalPage(1);
+  };
 
-    const matchesName = prod.name?.toLowerCase().includes(q);
-    const matchesSku =
-      prod.sku?.toLowerCase().includes(q) ||
-      prod.sku_codes?.some((code) => code.toLowerCase().includes(q));
-    const matchesCategory = prod.category_name?.toLowerCase().includes(q);
-    const matchesPrice = prod.sale_price?.toString().includes(q);
+  // Local fallback filter only if server-side search is not driving products
+  const filtered = isControlledSearch
+    ? products
+    : products.filter((prod) => {
+        const q = currentSearch.toLowerCase().trim();
+        if (!q) return true;
 
-    return matchesName || matchesSku || matchesCategory || matchesPrice;
-  });
+        const matchesName = prod.name?.toLowerCase().includes(q);
+        const matchesSku =
+          prod.sku?.toLowerCase().includes(q) ||
+          prod.sku_codes?.some((code) => code.toLowerCase().includes(q));
+        const matchesCategory = prod.category_name?.toLowerCase().includes(q);
+        const matchesPrice = prod.sale_price?.toString().includes(q);
+
+        return matchesName || matchesSku || matchesCategory || matchesPrice;
+      });
 
   const activePage = onPageChange ? page : localPage;
   const activeLimit = onLimitChange ? limit : localLimit;
@@ -86,7 +106,7 @@ export function ProductTable({
   const activeTotalPages = totalPages || Math.ceil(filtered.length / activeLimit) || 1;
 
   const displayProducts = onPageChange
-    ? filtered
+    ? products
     : filtered.slice((localPage - 1) * localLimit, localPage * localLimit);
 
   const handleGoPage = (p) => {
@@ -106,7 +126,6 @@ export function ProductTable({
     }
   };
 
-
   return (
     <div className="bg-white border border-slate-200/90 rounded-xl p-5 shadow-xs space-y-4">
       {/* Top Search & Filter Toolbar matching Meetay */}
@@ -114,45 +133,33 @@ export function ProductTable({
         <div className="relative flex-1 sm:flex-initial min-w-[160px] max-w-full">
           <input
             type="text"
-            placeholder="Search products,sku,price..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              handleGoPage(1);
-            }}
-            className="w-full sm:w-64 md:w-72 bg-white border border-slate-200 rounded-lg px-3.5 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-2xs"
+            placeholder="Search products, SKU, price..."
+            value={currentSearch}
+            onChange={(e) => handleSearchInput(e.target.value)}
+            className="w-full sm:w-64 md:w-72 bg-white border border-slate-200 rounded-lg pl-3.5 pr-8 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-2xs"
           />
+          {currentSearch && (
+            <button
+              type="button"
+              onClick={handleReset}
+              className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 text-xs p-0.5"
+              title="Clear Search"
+            >
+              ✕
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
           {/* Green Search Action Button */}
           <button
             type="button"
+            onClick={() => handleSearchInput(currentSearch)}
             className="w-8 h-8 flex items-center justify-center rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-2xs cursor-pointer shrink-0"
             title="Search"
           >
             <Search className="w-3.5 h-3.5" />
           </button>
-
-          {/* Pink Reset Button */}
-          {/* <button
-            type="button"
-            onClick={handleReset}
-            className="w-8 h-8 flex items-center justify-center rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-600 transition shadow-2xs cursor-pointer shrink-0"
-            title="Reset Search"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-          </button> */}
-
-          {/* Refresh Button */}
-          {/* <button
-            type="button"
-            onClick={onRefresh}
-            className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition shadow-2xs cursor-pointer shrink-0"
-            title="Refresh Products"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button> */}
         </div>
       </div>
 
