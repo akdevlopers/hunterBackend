@@ -1,0 +1,10 @@
+node_modules
+hunter_backend.zip
+.git
+.next
+dist
+build
+*.log
+*.zip
+.env
+.env.*
