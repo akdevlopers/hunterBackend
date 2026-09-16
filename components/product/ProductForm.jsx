@@ -19,6 +19,7 @@ import {
   Lock,
   AlertCircle,
   Image as ImageIcon,
+  Images,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -119,6 +120,7 @@ export function ProductForm({
   const [newOptionInput, setNewOptionInput] = useState("");
   const [saving, setSaving] = useState(false);
   const coverImageInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
   const attrDropdownRef = useRef(null);
   const optionsDropdownRef = useRef(null);
 
@@ -129,6 +131,10 @@ export function ProductForm({
   const [imagePreview, setImagePreview] = useState("");
   const [imgError, setImgError] = useState(false);
   const [selectedCoverFile, setSelectedCoverFile] = useState(null);
+
+  // Multiple Gallery Images State
+  const [galleryImages, setGalleryImages] = useState([]);
+  const [deletedGalleryImageIds, setDeletedGalleryImageIds] = useState([]);
 
   const [groupedAttributeOptions, setGroupedAttributeOptions] = useState([]);
   const [availableAttributeOptions, setAvailableAttributeOptions] = useState([]);
@@ -236,6 +242,67 @@ export function ProductForm({
         setImgError(false);
       } else {
         setImagePreview("");
+      }
+
+      const rawCoverImg = (initialData.cover_image_url || initialData.cover_image_path || initialData.cover_image || initialData.image || "").trim();
+      const cleanCoverPath = rawCoverImg.split("?")[0].replace(/^https?:\/\/[^\/]+\//, "").replace(/^\/+/, "");
+      const cleanCoverBaseName = decodeURIComponent((cleanCoverPath.split("/").pop() || "").replace(/^(\d+_)+/, ""));
+
+      // Initialize gallery images with deduplication and exclude cover image
+      const rawGallery = [
+        ...(Array.isArray(initialData.product_images) ? initialData.product_images : []),
+        ...(Array.isArray(initialData.images) ? initialData.images : []),
+      ];
+
+      if (rawGallery.length > 0) {
+        const formattedGallery = [];
+
+        rawGallery.forEach((img, idx) => {
+          const imgId = typeof img === "object" && (img.id || img.image_id) ? String(img.id || img.image_id) : null;
+          let url = typeof img === "string" ? img : (img.image_url || img.image_path || img.url || "");
+          if (url && !url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("blob:") && !url.startsWith("data:")) {
+            url = `https://meetay.s3.ap-south-1.amazonaws.com/${url.replace(/^\/+/, "")}`;
+          }
+
+          if (!url) return;
+
+          const cleanUrl = url.split("?")[0];
+          const cleanImgPath = cleanUrl.replace(/^https?:\/\/[^\/]+\//, "").replace(/^\/+/, "");
+          const rawFileName = cleanUrl.split("/").pop() || "";
+          // Strip timestamp prefixes like "1789560063697_491_" to get original filename
+          const baseName = decodeURIComponent(rawFileName.replace(/^(\d+_)+/, ""));
+          const matchKey = baseName || cleanUrl;
+
+          // 1. Exclude Cover Image from Gallery Images
+          if (
+            (cleanCoverPath && cleanImgPath && cleanCoverPath === cleanImgPath) ||
+            (cleanCoverBaseName && baseName && cleanCoverBaseName === baseName)
+          ) {
+            return;
+          }
+
+          // 2. Check if this image was already added to formattedGallery (group all duplicate IDs together)
+          const existingEntry = formattedGallery.find((item) => item.matchKey === matchKey);
+          if (existingEntry) {
+            if (imgId && !existingEntry.allIds.includes(imgId)) {
+              existingEntry.allIds.push(imgId);
+            }
+            return;
+          }
+
+          formattedGallery.push({
+            id: imgId || `existing-${idx}`,
+            allIds: imgId ? [imgId] : [],
+            matchKey: matchKey,
+            url: url,
+            isExisting: true,
+            raw: img,
+          });
+        });
+
+        setGalleryImages(formattedGallery);
+      } else {
+        setGalleryImages([]);
       }
 
       setSelectedOptions(initOptions);
@@ -438,6 +505,84 @@ export function ProductForm({
     }
   };
 
+  const handleRemoveCoverImage = () => {
+    setSelectedCoverFile(null);
+    setImagePreview("");
+    setImgError(false);
+    if (coverImageInputRef.current) {
+      coverImageInputRef.current.value = "";
+    }
+    setFormData((prev) => ({
+      ...prev,
+      cover_image_file: null,
+      cover_image: "",
+      cover_image_path: "",
+      image_file: null,
+      image: "",
+      file: null,
+    }));
+  };
+
+  const handleGalleryFilesChange = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    const newItems = files.map((file, idx) => ({
+      id: `new-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+      file: file,
+      url: URL.createObjectURL(file),
+      name: file.name,
+      isExisting: false,
+    }));
+
+    setGalleryImages((prev) => [...prev, ...newItems]);
+    if (galleryInputRef.current) {
+      galleryInputRef.current.value = "";
+    }
+  };
+
+  const handleRemoveGalleryImage = async (idToRemove) => {
+    const item = galleryImages.find((img) => img.id === idToRemove);
+    if (item && item.isExisting) {
+      const idsToDelete = (item.allIds && item.allIds.length > 0) ? item.allIds : (item.id ? [item.id] : []);
+      const validIds = idsToDelete.filter((id) => !String(id).startsWith("existing-"));
+      setDeletedGalleryImageIds((dPrev) => Array.from(new Set([...dPrev, ...validIds])));
+
+      const currentProdId = String(productId || initialData?.id || "");
+      const currentStoreId = String(initialData?.store_id || "");
+      for (const id of validIds) {
+        try {
+          await api.removeProductImage({ imageId: id, productId: currentProdId, storeId: currentStoreId });
+        } catch (e) {}
+      }
+    }
+    setGalleryImages((prev) => prev.filter((img) => img.id !== idToRemove));
+  };
+
+  const handleClearAllGallery = async () => {
+    const allExistingIds = [];
+    galleryImages.forEach((img) => {
+      if (img.isExisting) {
+        const ids = (img.allIds && img.allIds.length > 0) ? img.allIds : (img.id ? [img.id] : []);
+        ids.forEach((id) => {
+          if (!String(id).startsWith("existing-")) {
+            allExistingIds.push(id);
+          }
+        });
+      }
+    });
+
+    setDeletedGalleryImageIds((prev) => Array.from(new Set([...prev, ...allExistingIds])));
+    const currentProdId = String(productId || initialData?.id || "");
+    const currentStoreId = String(initialData?.store_id || "");
+    for (const id of allExistingIds) {
+      try {
+        await api.removeProductImage({ imageId: id, productId: currentProdId, storeId: currentStoreId });
+      } catch (e) {}
+    }
+    setGalleryImages([]);
+  };
+
   const handleAddAttributeOption = () => {
     if (!newOptionInput.trim()) return;
     const optionName = newOptionInput.trim();
@@ -494,6 +639,20 @@ export function ProductForm({
     e.preventDefault();
     setSaving(true);
 
+    const currentProdId = String(productId || initialData?.id || "");
+    const currentStoreId = String(initialData?.store_id || "");
+
+    // Delete any pending deleted image IDs on server via remove_image endpoint
+    if (deletedGalleryImageIds.length > 0) {
+      for (const dId of deletedGalleryImageIds) {
+        if (!String(dId).startsWith("existing-")) {
+          try {
+            await api.removeProductImage({ imageId: dId, productId: currentProdId, storeId: currentStoreId });
+          } catch (e) {}
+        }
+      }
+    }
+
     const productAttributeData = selectedAttributes.map((attr) => {
       const attrOpts = availableAttributeOptions.filter(
         (opt) => String(opt.attributeId) === String(attr.id) && selectedOptions.includes(opt.termText)
@@ -509,6 +668,22 @@ export function ProductForm({
       };
     });
 
+    const newGalleryFiles = galleryImages
+      .filter((img) => !img.isExisting && img.file)
+      .map((img) => img.file);
+
+    const existingGalleryIds = [];
+    galleryImages.forEach((img) => {
+      if (img.isExisting) {
+        const ids = (img.allIds && img.allIds.length > 0) ? img.allIds : (img.id ? [img.id] : []);
+        ids.forEach((id) => {
+          if (!String(id).startsWith("existing-")) {
+            existingGalleryIds.push(id);
+          }
+        });
+      }
+    });
+
     const payload = {
       ...formData,
       cover_image_file: selectedCoverFile || formData.cover_image_file || null,
@@ -516,6 +691,11 @@ export function ProductForm({
       image_file: selectedCoverFile || formData.image_file || null,
       image: selectedCoverFile || formData.cover_image_path || null,
       file: selectedCoverFile || formData.file || null,
+      gallery_files: newGalleryFiles,
+      images_files: newGalleryFiles,
+      gallery_images: newGalleryFiles,
+      existing_gallery_ids: Array.from(new Set(existingGalleryIds)),
+      deleted_gallery_ids: Array.from(new Set(deletedGalleryImageIds)),
       selected_attributes: selectedAttributes,
       attribute_id: selectedAttributes.map((a) => a.id).join(","),
       product_attribute: JSON.stringify(productAttributeData),
@@ -710,16 +890,36 @@ export function ProductForm({
             </div>
           </div>
 
-          {/* Card 2: Product Image */}
-          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
-            <h3 className="text-sm font-bold text-slate-900 pb-2 border-b border-slate-100">
-              Product Image
-            </h3>
+          {/* Card 2: Product Images & Gallery */}
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-5">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Images className="w-4 h-4 text-emerald-600" />
+                Product Images
+              </h3>
+              {galleryImages.length > 0 && (
+                <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                  {galleryImages.length} {galleryImages.length === 1 ? "gallery image" : "gallery images"}
+                </span>
+              )}
+            </div>
 
+            {/* 1. Cover Image (Main Image) */}
             <div className="space-y-2">
-              <label className="block text-xs font-semibold text-slate-700">
-                Upload Cover Image
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Cover Image <span className="text-slate-400 font-normal">(Primary Display)</span>
+                </label>
+                {imagePreview && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveCoverImage}
+                    className="text-[11px] text-rose-500 hover:text-rose-700 font-medium transition cursor-pointer"
+                  >
+                    Remove Cover
+                  </button>
+                )}
+              </div>
 
               {/* Hidden file picker */}
               <input
@@ -736,27 +936,130 @@ export function ProductForm({
                   onClick={() => coverImageInputRef.current?.click()}
                   className="px-3 py-1 bg-white border border-slate-200 rounded text-xs font-medium text-slate-700 hover:bg-slate-100 transition shadow-xs cursor-pointer"
                 >
-                  Choose Files
+                  Choose Cover
                 </button>
-                <span className="text-xs text-slate-500 ml-3 truncate" title={formData.cover_image_file?.name || ""}>
-                  {formData.cover_image_file?.name || (imagePreview ? "File selected" : "No file chosen")}
+                <span className="text-xs text-slate-500 ml-3 truncate flex-1" title={formData.cover_image_file?.name || ""}>
+                  {formData.cover_image_file?.name || (imagePreview ? "Cover image selected" : "No file chosen")}
                 </span>
               </div>
 
-              {/* Image Preview Thumbnail below upload box */}
+              {/* Cover Preview */}
               {imagePreview && !imgError ? (
-                <div className="mt-2 w-24 h-24 rounded-lg overflow-hidden border border-slate-200 bg-white relative shadow-2xs">
-                  <img
-                    src={imagePreview}
-                    alt="Cover Preview"
-                    onError={() => setImgError(true)}
-                    className="w-full h-full object-cover"
-                  />
+                <div className="mt-2 relative inline-block">
+                  <div className="w-24 h-24 rounded-lg overflow-hidden border-2 border-emerald-500/40 bg-white relative shadow-2xs group">
+                    <img
+                      src={imagePreview}
+                      alt="Cover Preview"
+                      onError={() => setImgError(true)}
+                      className="w-full h-full object-cover"
+                    />
+                    <span className="absolute bottom-1 left-1 right-1 text-center text-[9px] font-semibold bg-emerald-600 text-white rounded px-1 py-0.5 shadow-xs">
+                      Cover
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRemoveCoverImage}
+                    className="absolute -top-1.5 -right-1.5 bg-rose-500 hover:bg-rose-600 text-white rounded-full p-0.5 shadow transition"
+                    title="Remove cover image"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
                 </div>
               ) : (
                 <div className="mt-2 w-24 h-24 rounded-lg bg-slate-100 border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400">
                   <ImageIcon className="w-6 h-6 stroke-[1.5]" />
-                  <span className="text-[10px] text-slate-400 mt-1 font-medium">No image</span>
+                  <span className="text-[10px] text-slate-400 mt-1 font-medium">No cover</span>
+                </div>
+              )}
+            </div>
+
+            {/* 2. Multiple Gallery Images */}
+            <div className="pt-3 border-t border-slate-100 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Gallery Images <span className="text-emerald-600 font-medium">(Multiple Uploads)</span>
+                  </label>
+                  <p className="text-[11px] text-slate-400">
+                    Add multiple product angle shots or detail images
+                  </p>
+                </div>
+                {galleryImages.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearAllGallery}
+                    className="text-[11px] text-rose-500 hover:text-rose-700 font-medium transition cursor-pointer"
+                  >
+                    Clear All
+                  </button>
+                )}
+              </div>
+
+              {/* Hidden multi-file picker */}
+              <input
+                ref={galleryInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={handleGalleryFilesChange}
+              />
+
+              {/* Upload Dropzone / Button */}
+              <div
+                onClick={() => galleryInputRef.current?.click()}
+                className="border-2 border-dashed border-slate-200 hover:border-emerald-500 rounded-xl p-4 flex flex-col items-center justify-center gap-1.5 bg-slate-50/50 hover:bg-emerald-50/20 cursor-pointer transition text-center group"
+              >
+                <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center group-hover:scale-105 transition">
+                  <Upload className="w-4 h-4" />
+                </div>
+                <div className="text-xs font-semibold text-slate-700">
+                  <span className="text-emerald-600 font-bold">Click to choose multiple images</span> or drag & drop
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  Supports PNG, JPG, JPEG, WEBP (Select multiple files at once)
+                </div>
+              </div>
+
+              {/* Gallery Previews Grid */}
+              {galleryImages.length > 0 && (
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 pt-1">
+                  {galleryImages.map((img) => (
+                    <div
+                      key={img.id}
+                      className="relative group rounded-lg overflow-hidden border border-slate-200 bg-white shadow-2xs aspect-square"
+                    >
+                      <img
+                        src={img.url}
+                        alt="Gallery Preview"
+                        className="w-full h-full object-cover"
+                      />
+                      {/* Badge (New / Existing) */}
+                      <span
+                        className={`absolute bottom-1 left-1 text-[9px] font-semibold px-1 py-0.5 rounded shadow-xs ${
+                          img.isExisting
+                            ? "bg-slate-800/80 text-white"
+                            : "bg-emerald-600 text-white"
+                        }`}
+                      >
+                        {img.isExisting ? "Existing" : "New"}
+                      </span>
+
+                      {/* Remove Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveGalleryImage(img.id);
+                        }}
+                        className="absolute top-1 right-1 bg-rose-600 hover:bg-rose-700 text-white rounded-full p-1 shadow transition opacity-90 group-hover:opacity-100 cursor-pointer"
+                        title="Delete image"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
