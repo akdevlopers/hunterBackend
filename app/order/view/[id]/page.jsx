@@ -15,6 +15,10 @@ import {
   FileText,
   Plus,
   Trash2,
+  X,
+  ZoomIn,
+  ExternalLink,
+  Image as ImageIcon,
 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { api } from "@/lib/api";
@@ -25,6 +29,7 @@ export default function OrderViewPage() {
 
   const [orderData, setOrderData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [selectedImage, setSelectedImage] = useState(null);
 
   // New Note state
   const [noteText, setNoteText] = useState("");
@@ -280,17 +285,34 @@ export default function OrderViewPage() {
                   {items.map((item, idx) => (
                     <tr key={idx} className="hover:bg-slate-50/50">
                       <td className="py-3 px-4">
-                        <div className="w-12 h-12 rounded-lg overflow-hidden border border-slate-200 bg-white">
-                          <img
-                            src={
-                              item.image ||
-                              item.cover_image ||
-                              "https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=200"
-                            }
-                            alt={item.name}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
+                        {(() => {
+                          const rawImg = item.image || item.cover_image;
+                          const fullImgUrl = rawImg
+                            ? (rawImg.startsWith("http") || rawImg.startsWith("blob:") || rawImg.startsWith("data:")
+                                ? rawImg
+                                : `https://meetay.com/${rawImg}`)
+                            : "https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=200";
+
+                          return (
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => setSelectedImage({ url: fullImgUrl, title: item.name || "Product" })}
+                              className="w-12 h-12 rounded-lg overflow-hidden border border-slate-200 bg-white group relative cursor-pointer hover:border-emerald-500 transition shadow-2xs shrink-0"
+                              title="Click to view full image"
+                            >
+                              <img
+                                src={fullImgUrl}
+                                alt={item.name}
+                                className="w-full h-full object-cover transition group-hover:scale-105"
+                              />
+                              {/* Clean Subtle Corner Zoom Icon */}
+                              <div className="absolute bottom-1 right-1 p-0.5 rounded bg-slate-900/60 text-white backdrop-blur-xs shadow-2xs pointer-events-none group-hover:bg-slate-900/80 transition-colors">
+                                <ZoomIn className="w-2.5 h-2.5" />
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="py-3 px-4 font-semibold text-slate-900">
                         {item.name}
@@ -444,6 +466,57 @@ export default function OrderViewPage() {
           </form>
         </div>
       </div>
+
+      {/* Standalone Fullscreen Image Popup Lightbox */}
+      {selectedImage && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setSelectedImage(null)}
+        >
+          <div
+            className="relative max-w-2xl w-full max-h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50">
+              <div className="flex items-center gap-2 min-w-0">
+                <ImageIcon className="w-4 h-4 text-emerald-600 shrink-0" />
+                <h4 className="text-xs font-bold text-slate-800 truncate" title={selectedImage.title}>
+                  {selectedImage.title}
+                </h4>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <a
+                  href={selectedImage.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 transition cursor-pointer"
+                  title="Open in new tab"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setSelectedImage(null)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition cursor-pointer"
+                  title="Close image view"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Image Container */}
+            <div className="flex-1 overflow-auto bg-slate-900/5 p-4 sm:p-6 flex items-center justify-center min-h-[250px] max-h-[75vh]">
+              <img
+                src={selectedImage.url}
+                alt={selectedImage.title}
+                className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-sm"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Loader2, Image as ImageIcon, RotateCcw, Package, AlertCircle } from "lucide-react";
+import { Loader2, Image as ImageIcon, RotateCcw, Package, AlertCircle, X, ZoomIn, ExternalLink } from "lucide-react";
 import { api } from "@/lib/api";
 import { Modal } from "@/components/ui/Modal";
 
@@ -10,6 +10,7 @@ export function OrderPreviewModal({ isOpen, onClose, order }) {
   const [loading, setLoading] = useState(false);
   const [returningId, setReturningId] = useState(null);
   const [returnMessage, setReturnMessage] = useState("");
+  const [selectedImage, setSelectedImage] = useState(null);
 
   useEffect(() => {
     if (isOpen && order?.id) {
@@ -22,8 +23,24 @@ export function OrderPreviewModal({ isOpen, onClose, order }) {
       fetchOrderDetails();
     } else {
       setDetails(null);
+      setSelectedImage(null);
     }
   }, [isOpen, order]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape" && selectedImage) {
+        e.stopPropagation();
+        setSelectedImage(null);
+      }
+    };
+    if (selectedImage) {
+      window.addEventListener("keydown", handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [selectedImage]);
 
   if (!isOpen || !order) return null;
 
@@ -164,11 +181,26 @@ export function OrderPreviewModal({ isOpen, onClose, order }) {
       : `https://meetay.com/${imgSrc}`;
 
     return (
-      <div className={`${className} rounded-lg overflow-hidden border border-slate-200 bg-slate-50 shadow-2xs shrink-0 flex items-center justify-center relative`}>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={(e) => {
+          e.stopPropagation();
+          setSelectedImage({ url: fullUrl, title: altText || "Product Image" });
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.stopPropagation();
+            setSelectedImage({ url: fullUrl, title: altText || "Product Image" });
+          }
+        }}
+        className={`${className} group relative rounded-lg overflow-hidden border border-slate-200 bg-slate-50 shadow-2xs shrink-0 flex items-center justify-center cursor-pointer transition-all hover:scale-105 hover:border-emerald-500 hover:shadow-md select-none`}
+        title="Click to view full image"
+      >
         <img
           src={fullUrl}
           alt={altText || "Product"}
-          className="w-full h-full object-cover"
+          className="w-full h-full object-cover transition duration-200 group-hover:opacity-90"
           onError={(e) => {
             e.target.style.display = "none";
             if (e.target.parentElement) {
@@ -176,17 +208,23 @@ export function OrderPreviewModal({ isOpen, onClose, order }) {
             }
           }}
         />
+
+        {/* Clean Subtle Corner Zoom Icon */}
+        <div className="absolute bottom-1 right-1 p-1 rounded-md bg-slate-900/60 text-white backdrop-blur-xs shadow-2xs pointer-events-none group-hover:bg-slate-900/80 transition-colors">
+          <ZoomIn className="w-2.5 h-2.5" />
+        </div>
       </div>
     );
   };
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={`Order Preview #${orderObj.product_order_id || orderObj.id}`}
-      maxWidth="max-w-4xl"
-    >
+    <>
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        title={`Order Preview #${orderObj.product_order_id || orderObj.id}`}
+        maxWidth="max-w-4xl"
+      >
       {loading ? (
         <div className="p-12 text-center text-slate-400 space-y-3">
           <Loader2 className="w-8 h-8 text-emerald-600 animate-spin mx-auto" />
@@ -537,5 +575,57 @@ export function OrderPreviewModal({ isOpen, onClose, order }) {
         </div>
       )}
     </Modal>
+
+    {/* Standalone Fullscreen Image Popup Lightbox (Desktop & Mobile) */}
+    {selectedImage && (
+      <div
+        className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-200"
+        onClick={() => setSelectedImage(null)}
+      >
+        <div
+          className="relative max-w-2xl w-full max-h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 animate-in zoom-in-95 duration-200"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50">
+            <div className="flex items-center gap-2 min-w-0">
+              <ImageIcon className="w-4 h-4 text-emerald-600 shrink-0" />
+              <h4 className="text-xs font-bold text-slate-800 truncate" title={selectedImage.title}>
+                {selectedImage.title}
+              </h4>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <a
+                href={selectedImage.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 transition cursor-pointer"
+                title="Open in new tab"
+              >
+                <ExternalLink className="w-4 h-4" />
+              </a>
+              <button
+                type="button"
+                onClick={() => setSelectedImage(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition cursor-pointer"
+                title="Close image view"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Image Container */}
+          <div className="flex-1 overflow-auto bg-slate-900/5 p-4 sm:p-6 flex items-center justify-center min-h-[250px] max-h-[75vh]">
+            <img
+              src={selectedImage.url}
+              alt={selectedImage.title}
+              className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-sm"
+            />
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
