@@ -93,11 +93,11 @@ export function OrderTable({
   };
 
   const handleExportCSV = () => {
-    const headers = "Order ID,Date,Customer Name,Email,Phone,Address,Paid Amount,Payment Type,Delivery Status\n";
+    const headers = "Order ID,Date,Customer Name,Email,Phone,Address,Final Amount,Paid Amount,Payment Type,Delivery Status\n";
     const rows = ordersList
       .map((o) => {
         const cust = o.customer_info || o.customer || {};
-        return `"${o.product_order_id || o.id}","${o.order_date}","${cust.name || ""}","${cust.email || ""}","${cust.phone || cust.telephone || ""}","${(cust.address || "").replace(/"/g, '""')}","${o.paid_amount || o.final_price}","${o.payment_type}","${o.delivered_status_label || (o.delivered_status === 0 ? "New" : o.delivered_status === 1 ? "Completed" : "Remark")}"`;
+        return `"${o.product_order_id || o.id}","${o.order_date}","${cust.name || ""}","${cust.email || ""}","${cust.phone || cust.telephone || ""}","${(cust.address || "").replace(/"/g, '""')}","${o.final_price ?? o.price ?? 0}","${o.paid_amount ?? o.paidAmount ?? 0}","${o.payment_type}","${o.delivered_status_label || (o.delivered_status === 0 ? "New" : o.delivered_status === 1 ? "Completed" : "Remark")}"`;
       })
       .join("\n");
 
@@ -308,13 +308,14 @@ export function OrderTable({
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50/90 border-y border-slate-200 text-xs font-bold text-slate-800 uppercase tracking-wider">
-                    <th className="py-3 px-4 w-[16%]">ORDER ID</th>
+                    <th className="py-3 px-4 w-[15%]">ORDER ID</th>
                     <th className="py-3 px-4 w-[12%]">DATE</th>
-                    <th className="py-3 px-4 w-[24%]">CUSTOMER INFO</th>
-                    <th className="py-3 px-4 w-[10%]">PAID AMOUNT</th>
-                    <th className="py-3 px-4 w-[10%]">PAYMENT TYPE</th>
-                    <th className="py-3 px-4 w-[12%]">ORDER STATUS</th>
-                    <th className="py-3 px-4 w-[16%] text-center">ACTION</th>
+                    <th className="py-3 px-4 w-[22%]">CUSTOMER INFO</th>
+                    <th className="py-3 px-3 w-[10%]">FINAL AMOUNT</th>
+                    <th className="py-3 px-3 w-[10%]">PAID AMOUNT</th>
+                    <th className="py-3 px-3 w-[9%]">PAYMENT TYPE</th>
+                    <th className="py-3 px-4 w-[10%]">ORDER STATUS</th>
+                    <th className="py-3 px-4 w-[12%] text-center">ACTION</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
@@ -332,10 +333,13 @@ export function OrderTable({
                           <div className="h-3 bg-slate-200 rounded w-44"></div>
                           <div className="h-3 bg-slate-200 rounded w-24"></div>
                         </td>
-                        <td className="py-4 px-4">
+                        <td className="py-4 px-3">
                           <div className="h-4 bg-slate-200 rounded w-16"></div>
                         </td>
-                        <td className="py-4 px-4">
+                        <td className="py-4 px-3">
+                          <div className="h-4 bg-slate-200 rounded w-16"></div>
+                        </td>
+                        <td className="py-4 px-3">
                           <div className="h-5 bg-slate-200 rounded w-16"></div>
                         </td>
                         <td className="py-4 px-4">
@@ -348,7 +352,7 @@ export function OrderTable({
                     ))
                   ) : ordersList.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-12 text-center text-slate-400 font-medium">
+                      <td colSpan={8} className="py-12 text-center text-slate-400 font-medium">
                         No matching orders found.
                       </td>
                     </tr>
@@ -408,13 +412,18 @@ export function OrderTable({
                             </div>
                           </td>
 
-                          {/* 4. PAID AMOUNT */}
-                          <td className="py-4 px-4 align-top font-bold text-slate-900 whitespace-nowrap">
-                            ₹ {Number(order.final_price ?? order.price ?? order.paid_amount ?? 0).toFixed(2)}
+                          {/* 4. FINAL AMOUNT */}
+                          <td className="py-4 px-3 align-top font-bold text-slate-900 whitespace-nowrap">
+                            ₹ {Number(order.final_price ?? order.total_amount ?? order.price ?? 0).toFixed(2)}
                           </td>
 
-                          {/* 5. PAYMENT TYPE */}
-                          <td className="py-4 px-4 align-top">
+                          {/* 5. PAID AMOUNT */}
+                          <td className="py-4 px-3 align-top font-semibold text-emerald-700 whitespace-nowrap">
+                            ₹ {Number(order.paid_amount ?? order.paidAmount ?? 0).toFixed(2)}
+                          </td>
+
+                          {/* 6. PAYMENT TYPE */}
+                          <td className="py-4 px-3 align-top">
                             <div className="space-y-0.5">
                               <span
                                 className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${
@@ -433,7 +442,7 @@ export function OrderTable({
                             </div>
                           </td>
 
-                          {/* 6. ORDER STATUS */}
+                          {/* 7. ORDER STATUS */}
                           <td className="py-4 px-4 align-top">
                             <div className="space-y-1.5">
                               <select
@@ -454,7 +463,7 @@ export function OrderTable({
                             </div>
                           </td>
 
-                          {/* 7. ACTION (Eye / Preview Button & Book Shiprocket Button) */}
+                          {/* 8. ACTION (Eye / Preview Button & Book Shiprocket Button) */}
                           <td className="py-4 px-4 align-top text-center whitespace-nowrap">
                             <div className="flex items-center justify-center gap-1.5">
                               <button
@@ -586,11 +595,18 @@ export function OrderTable({
                       </div>
 
                       {/* Pricing & Payment row */}
-                      <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs gap-2">
+                        <div>
+                          <span className="text-[10px] text-slate-400 block font-medium">Final Amount</span>
+                          <span className="font-bold text-slate-900 text-sm">
+                            ₹ {Number(order.final_price ?? order.total_amount ?? order.price ?? 0).toFixed(2)}
+                          </span>
+                        </div>
+
                         <div>
                           <span className="text-[10px] text-slate-400 block font-medium">Paid Amount</span>
-                          <span className="font-bold text-slate-900 text-sm">
-                            ₹ {Number(order.final_price ?? order.price ?? order.paid_amount ?? 0).toFixed(2)}
+                          <span className="font-semibold text-emerald-700 text-sm">
+                            ₹ {Number(order.paid_amount ?? order.paidAmount ?? 0).toFixed(2)}
                           </span>
                         </div>
 
@@ -703,7 +719,20 @@ export function OrderTable({
                     </div>
 
                     <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
-                      <span className="font-bold text-slate-900">₹ {order.paid_amount || order.final_price}</span>
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-slate-400 font-medium">Final:</span>
+                          <span className="font-bold text-slate-900">
+                            ₹ {Number(order.final_price ?? order.total_amount ?? order.price ?? 0).toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-slate-400 font-medium">Paid:</span>
+                          <span className="font-semibold text-emerald-700">
+                            ₹ {Number(order.paid_amount ?? order.paidAmount ?? 0).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
                       <div className="flex items-center gap-1.5">
                         <button
                           type="button"

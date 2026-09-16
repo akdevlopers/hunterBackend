@@ -329,9 +329,15 @@ export default function OrderViewPage() {
                   </span>
                 </div>
                 <div className="flex justify-between py-2 border-t border-slate-200 text-sm font-bold text-slate-900">
-                  <span>Grand Total Paid:</span>
+                  <span>Grand Total:</span>
+                  <span className="text-slate-900 text-base">
+                    ₹ {orderObj.final_price || orderObj.product_price || 0}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 text-sm font-bold text-emerald-700">
+                  <span>Paid Amount:</span>
                   <span className="text-emerald-700 text-base">
-                    ₹ {orderObj.final_price || orderObj.paidAmount || 0}
+                    ₹ {orderObj.paid_amount ?? orderObj.paidAmount ?? 0}
                   </span>
                 </div>
               </div>
