@@ -218,7 +218,7 @@ export function ProductTable({
                           (v) => `${v.sku || product.sku || "-"} ⇒ ${v.variant || ""} ⇒ ${v.stock ?? 1}`
                         )
                       : product.sku_codes || [
-                          `${product.sku || "15180"} ⇒ M(Size-38) ⇒ 1`,
+                          `${product.sku || ""}`,
                         ];
 
                   const imgUrl = getProductImageUrl(product);
