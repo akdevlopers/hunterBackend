@@ -140,6 +140,8 @@ export function ProductForm({
   const [availableAttributeOptions, setAvailableAttributeOptions] = useState([]);
   const [isOptionsDropdownOpen, setIsOptionsDropdownOpen] = useState(false);
   const [selectedOptions, setSelectedOptions] = useState([]);
+  const [variantToDelete, setVariantToDelete] = useState(null);
+  const [deletingVariant, setDeletingVariant] = useState(false);
 
   // Fetch all available attributes
   useEffect(() => {
@@ -179,6 +181,7 @@ export function ProductForm({
     if (initialData) {
       const initVariants = (initialData.variants || []).map((v) => ({
         id: v.variant || v.sku || String(v.id),
+        db_id: v.id || (typeof v.id === "number" || (/^\d+$/.test(String(v.id)) && !isNaN(Number(v.id))) ? v.id : null),
         name: v.variant || v.sku || "Option",
         stock: (v.stock ?? 1).toString(),
         sku: v.sku || "",
@@ -305,17 +308,9 @@ export function ProductForm({
         setGalleryImages([]);
       }
 
-      const hasProductAttrValues = (() => {
-        if (!initialData.product_attribute) return false;
-        try {
-          const parsed = typeof initialData.product_attribute === "string" ? JSON.parse(initialData.product_attribute) : initialData.product_attribute;
-          return Array.isArray(parsed) && parsed.some((p) => Array.isArray(p.values) && p.values.length > 0);
-        } catch (e) {
-          return false;
-        }
-      })();
-
-      if (!hasProductAttrValues) {
+      // Default select from variants array if present
+      const hasInitialVariants = Array.isArray(initialData.variants) && initialData.variants.length > 0;
+      if (hasInitialVariants) {
         setSelectedOptions(initOptions);
       }
 
@@ -426,8 +421,13 @@ export function ProductForm({
     }
   }, [selectedAttributes]);
 
-  // If initialData contains option IDs in product_attribute.values (e.g., ["15|16|18"]), resolve them to term texts by ID only
+  // If initialData has variants, use them as default select. Otherwise resolve option IDs in product_attribute.values to term texts by ID
   useEffect(() => {
+    const hasInitialVariants = Array.isArray(initialData?.variants) && initialData.variants.length > 0;
+    if (hasInitialVariants) {
+      return;
+    }
+
     if (availableAttributeOptions.length > 0 && initialData?.product_attribute) {
       let parsed = initialData.product_attribute;
       if (typeof parsed === "string") {
@@ -624,13 +624,70 @@ export function ProductForm({
     setNewOptionInput("");
   };
 
+  const handleRequestDeleteVariant = (item) => {
+    if (!item) return;
+    if (typeof item === "object") {
+      setVariantToDelete({
+        id: item.id,
+        db_id: item.db_id || (typeof item.id === "number" || (/^\d+$/.test(String(item.id)) && !isNaN(Number(item.id))) ? item.id : null),
+        name: item.name || item.variant || String(item.id),
+      });
+    } else {
+      const found = formData.variants.find(
+        (v) => v.name === item || String(v.id) === String(item)
+      );
+      setVariantToDelete({
+        id: found?.id || item,
+        db_id: found?.db_id || (found?.id && (/^\d+$/.test(String(found.id)) && !isNaN(Number(found.id))) ? found.id : null),
+        name: found?.name || item,
+      });
+    }
+  };
+
+  const handleConfirmDeleteVariant = async () => {
+    if (!variantToDelete) return;
+    setDeletingVariant(true);
+
+    try {
+      const variantId = variantToDelete.db_id || variantToDelete.id;
+      const currentProdId = String(productId || initialData?.id || "");
+
+      // Call API product_variant_delete
+      if (variantId) {
+        try {
+          await api.deleteProductVariant(variantId, currentProdId);
+        } catch (e) {
+          console.error("deleteProductVariant API error:", e);
+        }
+      }
+
+      const termToRemove = variantToDelete.name || variantToDelete.id;
+      const idToRemove = String(variantToDelete.id);
+
+      setFormData((prev) => ({
+        ...prev,
+        variants: prev.variants.filter(
+          (v) => String(v.id) !== idToRemove && v.name !== termToRemove
+        ),
+        attribute_options: prev.attribute_options.filter(
+          (opt) => opt !== termToRemove && String(opt) !== idToRemove
+        ),
+      }));
+
+      setSelectedOptions((prev) =>
+        prev.filter((opt) => opt !== termToRemove && String(opt) !== idToRemove)
+      );
+
+      setVariantToDelete(null);
+    } catch (err) {
+      console.error("Error deleting variant:", err);
+    } finally {
+      setDeletingVariant(false);
+    }
+  };
+
   const handleRemoveAttributeOption = (optionName) => {
-    setFormData((prev) => ({
-      ...prev,
-      attribute_options: prev.attribute_options.filter((opt) => opt !== optionName),
-      variants: prev.variants.filter((v) => v.name !== optionName),
-    }));
-    setSelectedOptions((prev) => prev.filter((opt) => opt !== optionName));
+    handleRequestDeleteVariant(optionName);
   };
 
   const toggleVariantAccordion = (variantId) => {
@@ -651,12 +708,8 @@ export function ProductForm({
     }));
   };
 
-  const handleRemoveVariant = (variantId) => {
-    setFormData((prev) => ({
-      ...prev,
-      variants: prev.variants.filter((v) => v.id !== variantId),
-      attribute_options: prev.attribute_options.filter((opt) => opt !== variantId),
-    }));
+  const handleRemoveVariant = (variantIdentifier) => {
+    handleRequestDeleteVariant(variantIdentifier);
   };
 
   const handleSubmit = async (e) => {
@@ -1295,7 +1348,7 @@ export function ProductForm({
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleRemoveVariant(variant.id)}
+                        onClick={() => handleRemoveVariant(variant.id || variant.name)}
                         className="text-rose-500 hover:text-rose-700 p-0.5"
                         title="Delete variant"
                       >
@@ -1433,6 +1486,54 @@ export function ProductForm({
                 <>
                   <Lock className="w-3.5 h-3.5" />
                   <span>Verify Password</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Variant Delete Confirmation Modal */}
+      <Modal
+        isOpen={!!variantToDelete}
+        onClose={() => !deletingVariant && setVariantToDelete(null)}
+        title="Delete Variant"
+        description={`Are you sure you want to delete "${variantToDelete?.name}"?`}
+        maxWidth="max-w-md"
+      >
+        <div className="space-y-4 pt-1">
+          <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+            <span>This variant will be permanently removed.</span>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setVariantToDelete(null)}
+              disabled={deletingVariant}
+              className="px-3.5 py-2 rounded-lg text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition cursor-pointer disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmDeleteVariant}
+              disabled={deletingVariant}
+              className="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 active:scale-95 transition cursor-pointer shadow-sm disabled:opacity-50 flex items-center gap-1.5"
+            >
+              {deletingVariant ? (
+                <>
+                  <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span>Deleting...</span>
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Yes, Delete</span>
                 </>
               )}
             </button>
