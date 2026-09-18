@@ -62,3 +62,25 @@ body {
 .glass-dropdown {
   @apply bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200 dark:border-slate-800 shadow-xl;
 }
+
+@media print {
+  @page {
+    size: auto;
+    margin: 0;
+    margin-top: 2px;
+  }
+  header, nav, aside, .sidebar, [role="navigation"] {
+    display: none !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    visibility: hidden !important;
+  }
+  body, main {
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+}
+

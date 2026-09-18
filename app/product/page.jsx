@@ -122,15 +122,14 @@ export default function ProductPage() {
 
           {/* Top Right Action Buttons (Print, Grid/List Toggle, Add) */}
           <div className="flex items-center gap-1.5">
-            {/* Print Button */}
-            {/* <button
-              type="button"
-              onClick={() => window.print()}
-              className="p-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-xs cursor-pointer"
-              title="Print Products"
+            {/* Print Button (Batch Label Print) */}
+            <Link
+              href="/product/print"
+              className="p-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-xs cursor-pointer inline-flex items-center justify-center"
+              title="Batch Label Print"
             >
               <Printer className="w-4 h-4" />
-            </button> */}
+            </Link>
 
             {/* Grid / List View Toggle Button */}
             <button

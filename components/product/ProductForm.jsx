@@ -195,7 +195,7 @@ export function ProductForm({
         if (typeof parsed === "string") {
           try {
             parsed = JSON.parse(parsed);
-          } catch (e) {}
+          } catch (e) { }
         }
         if (Array.isArray(parsed) && parsed.length > 0) {
           const first = parsed[0];
@@ -552,8 +552,8 @@ export function ProductForm({
       const currentStoreId = String(initialData?.store_id || "");
       for (const id of validIds) {
         try {
-          await api.removeProductImage({ imageId: id, productId: currentProdId, storeId: currentStoreId });
-        } catch (e) {}
+          // await api.removeProductImage({ imageId: id, productId: currentProdId, storeId: currentStoreId });
+        } catch (e) { }
       }
     }
     setGalleryImages((prev) => prev.filter((img) => img.id !== idToRemove));
@@ -577,8 +577,8 @@ export function ProductForm({
     const currentStoreId = String(initialData?.store_id || "");
     for (const id of allExistingIds) {
       try {
-        await api.removeProductImage({ imageId: id, productId: currentProdId, storeId: currentStoreId });
-      } catch (e) {}
+        //  await api.removeProductImage({ imageId: id, productId: currentProdId, storeId: currentStoreId });
+      } catch (e) { }
     }
     setGalleryImages([]);
   };
@@ -647,8 +647,8 @@ export function ProductForm({
       for (const dId of deletedGalleryImageIds) {
         if (!String(dId).startsWith("existing-")) {
           try {
-            await api.removeProductImage({ imageId: dId, productId: currentProdId, storeId: currentStoreId });
-          } catch (e) {}
+             await api.removeProductImage({ imageId: dId, productId: currentProdId, storeId: currentStoreId });
+          } catch (e) { }
         }
       }
     }
@@ -1037,11 +1037,10 @@ export function ProductForm({
                       />
                       {/* Badge (New / Existing) */}
                       <span
-                        className={`absolute bottom-1 left-1 text-[9px] font-semibold px-1 py-0.5 rounded shadow-xs ${
-                          img.isExisting
-                            ? "bg-slate-800/80 text-white"
-                            : "bg-emerald-600 text-white"
-                        }`}
+                        className={`absolute bottom-1 left-1 text-[9px] font-semibold px-1 py-0.5 rounded shadow-xs ${img.isExisting
+                          ? "bg-slate-800/80 text-white"
+                          : "bg-emerald-600 text-white"
+                          }`}
                       >
                         {img.isExisting ? "Existing" : "New"}
                       </span>
