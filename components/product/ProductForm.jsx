@@ -305,7 +305,19 @@ export function ProductForm({
         setGalleryImages([]);
       }
 
-      setSelectedOptions(initOptions);
+      const hasProductAttrValues = (() => {
+        if (!initialData.product_attribute) return false;
+        try {
+          const parsed = typeof initialData.product_attribute === "string" ? JSON.parse(initialData.product_attribute) : initialData.product_attribute;
+          return Array.isArray(parsed) && parsed.some((p) => Array.isArray(p.values) && p.values.length > 0);
+        } catch (e) {
+          return false;
+        }
+      })();
+
+      if (!hasProductAttrValues) {
+        setSelectedOptions(initOptions);
+      }
 
       const extractedAttrs = extractProductAttributes(initialData, allAttributes);
       if (extractedAttrs.length > 0) {
@@ -395,9 +407,9 @@ export function ProductForm({
         results.forEach((grp) => {
           grp.options.forEach((opt) => {
             const termText = typeof opt === "object" ? (opt.terms || opt.name || opt.value) : String(opt);
-            if (termText && !flat.some((item) => item.termText === termText && String(item.attributeId) === String(grp.attributeId))) {
+            if (termText) {
               flat.push({
-                id: opt.id || `${grp.attributeId}-${termText}`,
+                id: String(opt.id || `${grp.attributeId}-${termText}`),
                 termText,
                 attributeId: grp.attributeId,
                 attributeName: grp.attributeName,
@@ -414,7 +426,7 @@ export function ProductForm({
     }
   }, [selectedAttributes]);
 
-  // If initialData contains option IDs in product_attribute.values (e.g., ["15|16|18"]), resolve them to term texts
+  // If initialData contains option IDs in product_attribute.values (e.g., ["15|16|18"]), resolve them to term texts by ID only
   useEffect(() => {
     if (availableAttributeOptions.length > 0 && initialData?.product_attribute) {
       let parsed = initialData.product_attribute;
@@ -440,8 +452,9 @@ export function ProductForm({
 
         const matchedTerms = [];
         rawValues.forEach((val) => {
+          // ID only check
           const matchedOpt = availableAttributeOptions.find(
-            (opt) => String(opt.id) === String(val) || opt.termText === val
+            (opt) => String(opt.id) === String(val)
           );
           if (matchedOpt && !matchedTerms.includes(matchedOpt.termText)) {
             matchedTerms.push(matchedOpt.termText);
@@ -449,20 +462,31 @@ export function ProductForm({
         });
 
         if (matchedTerms.length > 0) {
-          setSelectedOptions((prev) => Array.from(new Set([...prev, ...matchedTerms])));
+          setSelectedOptions(matchedTerms);
           setFormData((prev) => {
-            const existingOptNames = prev.attribute_options || [];
-            const newOptNames = Array.from(new Set([...existingOptNames, ...matchedTerms]));
             const existingVariants = prev.variants || [];
-            const newVariants = [...existingVariants];
-            matchedTerms.forEach((term) => {
-              if (!newVariants.some((v) => v.name === term)) {
-                newVariants.push({ id: term, name: term, stock: "1", isOpen: true });
+            const newVariants = matchedTerms.map((term) => {
+              const found = existingVariants.find(
+                (v) => (v.name || v.variant) === term || String(v.id) === String(term)
+              );
+              if (found) {
+                return {
+                  ...found,
+                  name: term,
+                };
               }
+              return {
+                id: term,
+                name: term,
+                stock: "1",
+                sku: "",
+                price: "",
+                isOpen: true,
+              };
             });
             return {
               ...prev,
-              attribute_options: newOptNames,
+              attribute_options: matchedTerms,
               variants: newVariants,
             };
           });
@@ -647,7 +671,7 @@ export function ProductForm({
       for (const dId of deletedGalleryImageIds) {
         if (!String(dId).startsWith("existing-")) {
           try {
-             await api.removeProductImage({ imageId: dId, productId: currentProdId, storeId: currentStoreId });
+            await api.removeProductImage({ imageId: dId, productId: currentProdId, storeId: currentStoreId });
           } catch (e) { }
         }
       }
@@ -957,14 +981,14 @@ export function ProductForm({
                       Cover
                     </span>
                   </div>
-                  <button
+                  {/* <button
                     type="button"
                     onClick={handleRemoveCoverImage}
                     className="absolute -top-1.5 -right-1.5 bg-rose-500 hover:bg-rose-600 text-white rounded-full p-0.5 shadow transition"
                     title="Remove cover image"
                   >
                     <X className="w-3 h-3" />
-                  </button>
+                  </button> */}
                 </div>
               ) : (
                 <div className="mt-2 w-24 h-24 rounded-lg bg-slate-100 border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400">
