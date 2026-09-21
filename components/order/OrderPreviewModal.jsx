@@ -135,7 +135,7 @@ export function OrderPreviewModal({ isOpen, onClose, order }) {
               id: orderObj.id || 1,
               name: orderObj.product_name || orderObj.name,
               variant_name: orderObj.variant_name || orderObj.variant || "",
-              image: orderObj.image || orderObj.cover_image || null,
+              image: orderObj.cover_image_url || null,
               qty: orderObj.products_count || orderObj.qty || 1,
               orignal_price: orderObj.product_price || orderObj.paid_amount || orderObj.final_price || 0,
               final_price: orderObj.final_price || orderObj.paid_amount || 0,
@@ -356,7 +356,7 @@ export function OrderPreviewModal({ isOpen, onClose, order }) {
                       return (
                         <div key={idx} className="p-3 border border-slate-200 rounded-xl bg-slate-50/50 space-y-2 text-xs">
                           <div className="flex gap-3">
-                            {renderImage(item.image || item.cover_image, item.name, "w-16 h-16")}
+                            {renderImage(item.cover_image_url, item.name, "w-16 h-16")}
                             <div className="flex-1 min-w-0 space-y-1">
                               <p className="font-semibold text-slate-900 line-clamp-2">
                                 {item.name || item.title || item.product_name || "Product"}
