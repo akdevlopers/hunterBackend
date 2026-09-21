@@ -2,13 +2,23 @@
 
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
-import { Printer, AlertCircle, Sliders, RefreshCw } from "lucide-react";
+import { Printer, AlertCircle } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { api } from "@/lib/api";
 
 // High-precision Code 128 (Subset B) Barcode Pattern Table for fallback rendering
 const CODE128_PATTERNS = [
-
+  "212222", "222122", "222221", "121223", "121322", "131222", "122213", "122312", "132212", "221213",
+  "221312", "231212", "112232", "122132", "122231", "113222", "123122", "123221", "223211", "221132",
+  "221231", "213212", "223112", "312131", "311222", "321122", "321221", "312212", "322112", "322211",
+  "212123", "212321", "232121", "111323", "131123", "131321", "112313", "132113", "132311", "211313",
+  "231113", "231311", "112133", "112331", "132131", "113123", "113321", "133121", "313121", "211331",
+  "231131", "213113", "213311", "213131", "311123", "311321", "331121", "312113", "312311", "332111",
+  "314111", "221411", "431111", "111224", "111422", "121124", "121421", "141122", "141221", "112214",
+  "112412", "122114", "122411", "142112", "142211", "241211", "221114", "413111", "241112", "134111",
+  "111242", "121142", "121241", "114212", "124112", "124211", "411212", "421112", "421211", "212141",
+  "214121", "412121", "111143", "111341", "131141", "114113", "114311", "411113", "411311", "113141",
+  "114131", "311141", "411131", "211412", "211214", "211232", "2331112"
 ];
 
 function generateCode128Bars(text) {
@@ -46,23 +56,25 @@ function generateCode128Bars(text) {
   return bars;
 }
 
-function BarcodeSVG({ value, height = 18, className = "" }) {
+function BarcodeSVG({ value, height = 30, className = "" }) {
   const bars = useMemo(() => generateCode128Bars(value), [value]);
   const totalWidth = bars.reduce((sum, b) => sum + b.width, 0);
 
   let currentX = 0;
+
   return (
     <svg
       viewBox={`0 0 ${Math.max(totalWidth, 10)} ${height}`}
-      className={`h-[18px] max-w-[110px] ${className}`}
-      style={{ height: `${height}px`, width: "110px", maxWidth: "100%" }}
+      className={`w-44 h-7 ${className}`}
       preserveAspectRatio="none"
       shapeRendering="crispEdges"
     >
       {bars.map((bar, idx) => {
         const x = currentX;
         currentX += bar.width;
+
         if (!bar.isBar) return null;
+
         return (
           <rect
             key={idx}
@@ -85,20 +97,6 @@ export default function BatchLabelPrintPage() {
   const [loading, setLoading] = useState(false);
   const [barcodeList, setBarcodeList] = useState([]);
   const [errorMsg, setErrorMsg] = useState("");
-
-  // Label Calibration / Alignment Settings (Reduced default sizes)
-  const [showSettings, setShowSettings] = useState(false);
-  const [labelHeight, setLabelHeight] = useState(75); // Reduced from 100px to 75px
-  const [paddingLeft, setPaddingLeft] = useState(14); // Reduced from 26px to 14px
-  const [barcodeHeight, setBarcodeHeight] = useState(18); // Reduced from 35px to 18px
-  const [fontSizeScale, setFontSizeScale] = useState(80); // Reduced font scale
-
-  const handleResetSettings = () => {
-    setLabelHeight(75);
-    setPaddingLeft(14);
-    setBarcodeHeight(18);
-    setFontSizeScale(80);
-  };
 
   const handleClear = () => {
     setFromSku("");
@@ -124,6 +122,7 @@ export default function BatchLabelPrintPage() {
     setLoading(true);
 
     try {
+      // Call Live Barcode API: /admin/products/barcode
       const list = await api.getBarcodeList({
         fromSku: fromVal,
         toSku: toVal,
@@ -132,6 +131,7 @@ export default function BatchLabelPrintPage() {
 
       if (Array.isArray(list) && list.length > 0) {
         setBarcodeList(list);
+        // Trigger Print Dialog
         setTimeout(() => {
           window.print();
         }, 300);
@@ -147,7 +147,7 @@ export default function BatchLabelPrintPage() {
     }
   };
 
-  // Group barcode list into rows of 2 (pairs) for 2-column sticker sheets
+  // Group barcode list into rows of 2 (pairs) for table rendering matching PHP template
   const tableRows = useMemo(() => {
     const rows = [];
     for (let i = 0; i < barcodeList.length; i += 2) {
@@ -156,19 +156,12 @@ export default function BatchLabelPrintPage() {
     return rows;
   }, [barcodeList]);
 
-  // Scaled font sizes based on user preference
-  const scale = fontSizeScale / 100;
-  const priceSize = Math.max(8, Math.round(11 * scale));
-  const skuSize = Math.max(7, Math.round(9.5 * scale));
-  const textSize = Math.max(6.5, (8 * scale).toFixed(1));
-  const storeSize = Math.max(6, (7 * scale).toFixed(1));
-
   return (
     <AppLayout>
       <div className="space-y-6 print:m-0 print:p-0 print:space-y-0">
-        {/* Top Header Breadcrumb */}
+        {/* Top Header Breadcrumb matching Screenshot */}
         <div className="space-y-0.5 print:hidden">
-          <h1 className="text-xl font-bold text-slate-900">Product Barcode Label Print</h1>
+          <h1 className="text-xl font-bold text-slate-900">Product</h1>
           <div className="text-xs">
             <Link href="/dashboard" className="text-emerald-600 hover:underline font-normal">
               Home
@@ -178,106 +171,9 @@ export default function BatchLabelPrintPage() {
 
         {/* Batch Label Print Form Card */}
         <div className="bg-white rounded-xl border border-slate-200/90 shadow-2xs p-6 print:hidden">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-lg font-bold text-slate-900 tracking-tight">
-              Batch Label Print
-            </h2>
-
-            <button
-              type="button"
-              onClick={() => setShowSettings(!showSettings)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-slate-700 transition cursor-pointer"
-            >
-              <Sliders className="w-3.5 h-3.5 text-slate-500" />
-              <span>{showSettings ? "Hide Calibration" : "Label Alignment & Size"}</span>
-            </button>
-          </div>
-
-          {/* Size & Alignment Fine-Tuning Drawer */}
-          {showSettings && (
-            <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
-                <span className="text-xs font-bold text-slate-800">
-                  Label Roll Fine-Tuning (Reduced Size Settings)
-                </span>
-                <button
-                  type="button"
-                  onClick={handleResetSettings}
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-rose-600 transition"
-                >
-                  <RefreshCw className="w-3 h-3" />
-                  <span>Reset Defaults</span>
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
-                {/* Row Height */}
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-slate-700 font-medium">
-                    <span>Label Height:</span>
-                    <span className="font-bold text-emerald-700">{labelHeight}px</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="55"
-                    max="110"
-                    value={labelHeight}
-                    onChange={(e) => setLabelHeight(Number(e.target.value))}
-                    className="w-full accent-emerald-600"
-                  />
-                </div>
-
-                {/* Left Margin / Padding */}
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-slate-700 font-medium">
-                    <span>Left Padding:</span>
-                    <span className="font-bold text-emerald-700">{paddingLeft}px</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="35"
-                    value={paddingLeft}
-                    onChange={(e) => setPaddingLeft(Number(e.target.value))}
-                    className="w-full accent-emerald-600"
-                  />
-                </div>
-
-                {/* Barcode Height */}
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-slate-700 font-medium">
-                    <span>Barcode Height:</span>
-                    <span className="font-bold text-emerald-700">{barcodeHeight}px</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="12"
-                    max="35"
-                    value={barcodeHeight}
-                    onChange={(e) => setBarcodeHeight(Number(e.target.value))}
-                    className="w-full accent-emerald-600"
-                  />
-                </div>
-
-                {/* Font Scale */}
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-slate-700 font-medium">
-                    <span>Font Scale:</span>
-                    <span className="font-bold text-emerald-700">{fontSizeScale}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="60"
-                    max="120"
-                    step="5"
-                    value={fontSizeScale}
-                    onChange={(e) => setFontSizeScale(Number(e.target.value))}
-                    className="w-full accent-emerald-600"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
+          <h2 className="text-lg font-bold text-slate-900 mb-6 tracking-tight">
+            Batch Label Print
+          </h2>
 
           <form onSubmit={handleGenerateAndPrint} className="max-w-xl space-y-4">
             {/* From SKU */}
@@ -290,7 +186,7 @@ export default function BatchLabelPrintPage() {
                 type="text"
                 value={fromSku}
                 onChange={(e) => setFromSku(e.target.value)}
-                placeholder="e.g. 19711"
+                placeholder="e.g. 1001"
                 className="w-full sm:max-w-xs bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
               />
             </div>
@@ -305,7 +201,7 @@ export default function BatchLabelPrintPage() {
                 type="text"
                 value={toSku}
                 onChange={(e) => setToSku(e.target.value)}
-                placeholder="e.g. 19712"
+                placeholder="e.g. 1002"
                 className="w-full sm:max-w-xs bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
               />
             </div>
@@ -336,7 +232,7 @@ export default function BatchLabelPrintPage() {
               </div>
             )}
 
-            {/* Action Buttons */}
+            {/* Action Buttons matching screenshot */}
             <div className="flex items-center gap-2 pt-3">
               <button
                 type="button"
@@ -366,9 +262,9 @@ export default function BatchLabelPrintPage() {
                 <h3 className="text-sm font-bold text-slate-900">
                   Print Preview ({barcodeList.length} Labels)
                 </h3>
-                {/* <p className="text-[11px] text-slate-500">
-                  Compact 2-column sticker layout (Height: {labelHeight}px, Padding: {paddingLeft}px, Font: {fontSizeScale}%).
-                </p> */}
+                <p className="text-[11px] text-slate-500">
+                  PHP Table Template Format with 2-column layout.
+                </p>
               </div>
 
               <button
@@ -381,9 +277,9 @@ export default function BatchLabelPrintPage() {
               </button>
             </div>
 
-            {/* Table layout matching reduced print dimensions */}
+            {/* Table layout matching PHP template */}
             <div className="border border-slate-200 rounded-lg p-6 bg-slate-50/50">
-              <div className="max-w-md mx-auto bg-white p-4 rounded shadow-xs border border-dashed border-slate-300">
+              <div className="max-w-2xl mx-auto bg-white p-6 rounded shadow-xs border border-slate-100">
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <tbody>
                     {tableRows.map((row, rIdx) => (
@@ -393,22 +289,19 @@ export default function BatchLabelPrintPage() {
                             key={cIdx}
                             style={{
                               width: "50%",
-                              height: `${labelHeight}px`,
-                              paddingLeft: `${paddingLeft}px`,
-                              paddingRight: "4px",
-                              paddingTop: "2px",
-                              paddingBottom: "2px",
+                              height: "100px",
+                              paddingLeft: "26px",
+                              paddingBottom: "18px",
                               verticalAlign: "top",
-                              border: "1px dashed #e2e8f0",
                             }}
                           >
                             {item && (
-                              <div style={{ maxWidth: "135px" }}>
-                                <div style={{ fontSize: `${priceSize}px`, fontWeight: "bold", lineHeight: "1.1" }}>
+                              <div>
+                                <div style={{ fontSize: "13px", fontWeight: "bold" }}>
                                   ₹ {item.rate ?? item.price ?? ""}
                                 </div>
 
-                                <div style={{ margin: "1px 0" }}>
+                                <div style={{ margin: "2px 0" }}>
                                   {item.barcode ? (
                                     <img
                                       src={
@@ -417,42 +310,22 @@ export default function BatchLabelPrintPage() {
                                           : `data:image/png;base64,${item.barcode}`
                                       }
                                       alt={String(item.sku || "")}
-                                      style={{
-                                        display: "block",
-                                        height: `${barcodeHeight}px`,
-                                        maxHeight: `${barcodeHeight}px`,
-                                        maxWidth: "110px",
-                                        objectFit: "contain",
-                                      }}
+                                      style={{ display: "block", maxHeight: "35px" }}
                                     />
                                   ) : (
-                                    <BarcodeSVG
-                                      value={item.sku}
-                                      height={barcodeHeight}
-                                      className="w-28"
-                                    />
+                                    <BarcodeSVG value={item.sku} height={30} className="w-44 h-7" />
                                   )}
                                 </div>
 
-                                <div style={{ fontSize: `${skuSize}px`, fontWeight: "bold", lineHeight: "1.1" }}>
+                                <div style={{ fontSize: "12px", fontWeight: "bold" }}>
                                   {item.sku}
                                 </div>
 
-                                <div
-                                  style={{
-                                    fontSize: `${textSize}px`,
-                                    lineHeight: "1.05",
-                                    maxHeight: "22px",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                  }}
-                                >
+                                <div style={{ fontSize: "10px", lineHeight: "1.25" }}>
                                   {item.name}
-                                </div>
-                                <div style={{ fontSize: `${textSize}px`, lineHeight: "1.05", fontWeight: "600" }}>
+                                  <br />
                                   {item.size || item.variant || ""}
-                                </div>
-                                <div style={{ fontSize: `${storeSize}px`, lineHeight: "1.05", color: "#444" }}>
+                                  <br />
                                   Hunter Menswear Kanyakumari.
                                 </div>
                               </div>
@@ -468,7 +341,7 @@ export default function BatchLabelPrintPage() {
           </div>
         )}
 
-        {/* PRINT ONLY CONTAINER - Exact Compact HTML Table for Physical Stickers */}
+        {/* PRINT ONLY CONTAINER - Exact HTML Table matching PHP Code */}
         <div id="print-barcode-sheet" className="hidden print:block">
           <style jsx global>{`
             @media print {
@@ -481,7 +354,7 @@ export default function BatchLabelPrintPage() {
                 color: black !important;
                 margin: 0 !important;
                 padding: 0 !important;
-                font-family: Arial, Helvetica, sans-serif !important;
+                font-family: Arial, sans-serif !important;
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
               }
@@ -497,28 +370,15 @@ export default function BatchLabelPrintPage() {
                 width: 100% !important;
                 margin: 0 !important;
                 padding: 0 !important;
-                padding-top: 1px !important;
+                padding-top: 10px !important;
               }
-              table.barcode-print-tbl {
-                width: 100% !important;
-                border-collapse: collapse !important;
-                margin: 0 !important;
-                padding: 0 !important;
-              }
-              td.barcode-cell {
-                width: 50% !important;
-                height: ${labelHeight}px !important;
-                padding-left: ${paddingLeft}px !important;
-                padding-right: 4px !important;
-                padding-top: 2px !important;
-                padding-bottom: 2px !important;
-                vertical-align: top !important;
-                box-sizing: border-box !important;
-              }
+              p.inline { display: inline-block; }
+              span { font-size: 13px; }
+              div.b128 { border-left: 1px black solid; height: 20px; }
             }
           `}</style>
 
-          <table className="barcode-print-tbl" width="100%" style={{ width: "100%", borderCollapse: "collapse", margin: 0, padding: 0 }}>
+          <table width="100%" style={{ width: "100%", borderCollapse: "collapse", margin: 0, padding: 0 }}>
             <tbody>
               {tableRows.map((row, rIdx) => (
                 <React.Fragment key={rIdx}>
@@ -526,25 +386,23 @@ export default function BatchLabelPrintPage() {
                     {row.map((item, cIdx) => (
                       <td
                         key={cIdx}
-                        className="barcode-cell"
                         width="50%"
+                        height="100"
                         style={{
                           width: "50%",
-                          height: `${labelHeight}px`,
-                          paddingLeft: `${paddingLeft}px`,
-                          paddingRight: "4px",
-                          paddingTop: "2px",
-                          paddingBottom: "2px",
+                          height: "100px",
+                          paddingLeft: "26px",
+                          paddingBottom: "14px",
                           verticalAlign: "top",
                         }}
                       >
                         {item && (
-                          <div style={{ maxWidth: "135px", overflow: "hidden" }}>
-                            <div style={{ marginTop: "4px", fontSize: `${priceSize}px`, fontWeight: "bold", lineHeight: "1.1" }}>
+                          <div>
+                            <div style={{ fontSize: "13px", fontWeight: "normal" }}>
                               ₹ {item.rate ?? item.price ?? ""}
                             </div>
 
-                            <div style={{ margin: "1px 0" }}>
+                            <div style={{ margin: "2px 0" }}>
                               {item.barcode ? (
                                 <img
                                   src={
@@ -553,42 +411,22 @@ export default function BatchLabelPrintPage() {
                                       : `data:image/png;base64,${item.barcode}`
                                   }
                                   alt={String(item.sku || "")}
-                                  style={{
-                                    display: "block",
-                                    height: `${barcodeHeight}px`,
-                                    maxHeight: `${barcodeHeight}px`,
-                                    maxWidth: "110px",
-                                    objectFit: "contain",
-                                  }}
+                                  style={{ display: "block", maxHeight: "35px" }}
                                 />
                               ) : (
-                                <BarcodeSVG
-                                  value={item.sku}
-                                  height={barcodeHeight}
-                                  className="w-28"
-                                />
+                                <BarcodeSVG value={item.sku} height={30} className="w-40 h-7" />
                               )}
                             </div>
 
-                            <div style={{ fontSize: `${skuSize}px`, fontWeight: "bold", lineHeight: "1.1" }}>
+                            <div style={{ fontSize: "12px", fontWeight: "normal" }}>
                               {item.sku}
                             </div>
 
-                            <div
-                              style={{
-                                fontSize: `${textSize}px`,
-                                lineHeight: "1.05",
-                                maxHeight: "22px",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                              }}
-                            >
+                            <div style={{ fontSize: "10px", lineHeight: "1.25" }}>
                               {item.name}
-                            </div>
-                            <div style={{ fontSize: `${textSize}px`, lineHeight: "1.05", fontWeight: "600" }}>
+                              <br />
                               {item.size || item.variant || ""}
-                            </div>
-                            <div style={{ fontSize: `${storeSize}px`, lineHeight: "1.05", color: "#333" }}>
+                              <br />
                               Hunter Menswear Kanyakumari.
                             </div>
                           </div>
@@ -605,4 +443,3 @@ export default function BatchLabelPrintPage() {
     </AppLayout>
   );
 }
-
