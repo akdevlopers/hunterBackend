@@ -56,19 +56,26 @@ function generateCode128Bars(text) {
   return bars;
 }
 
-function BarcodeSVG({ value, height = 30, className = "" }) {
+function BarcodeSVG({ value, height = 34, className = "" }) {
   const bars = useMemo(() => generateCode128Bars(value), [value]);
-  const totalWidth = bars.reduce((sum, b) => sum + b.width, 0);
+  const barWidth = bars.reduce((sum, b) => sum + b.width, 0);
 
-  let currentX = 0;
+  // ISO/IEC 15417 Standard: Minimum 10-module quiet zone on both sides for optical scanners
+  const quietZone = 10;
+  const totalWidth = barWidth + quietZone * 2;
+
+  let currentX = quietZone;
 
   return (
     <svg
-      viewBox={`0 0 ${Math.max(totalWidth, 10)} ${height}`}
-      className={`w-44 h-7 ${className}`}
+      viewBox={`0 0 ${Math.max(totalWidth, 20)} ${height}`}
+      className={`block ${className || "w-[150px] h-[34px]"}`}
       preserveAspectRatio="none"
       shapeRendering="crispEdges"
+      style={{ background: "#ffffff" }}
     >
+      {/* Crisp white background ensuring high contrast for scanners */}
+      <rect x="0" y="0" width={Math.max(totalWidth, 20)} height={height} fill="#ffffff" />
       {bars.map((bar, idx) => {
         const x = currentX;
         currentX += bar.width;
@@ -94,6 +101,7 @@ export default function BatchLabelPrintPage() {
   const [fromSku, setFromSku] = useState("");
   const [toSku, setToSku] = useState("");
   const [quantity, setQuantity] = useState("1");
+  const [startPosition, setStartPosition] = useState("1");
   const [loading, setLoading] = useState(false);
   const [barcodeList, setBarcodeList] = useState([]);
   const [errorMsg, setErrorMsg] = useState("");
@@ -102,6 +110,7 @@ export default function BatchLabelPrintPage() {
     setFromSku("");
     setToSku("");
     setQuantity("1");
+    setStartPosition("1");
     setBarcodeList([]);
     setErrorMsg("");
   };
@@ -134,7 +143,7 @@ export default function BatchLabelPrintPage() {
         // Trigger Print Dialog
         setTimeout(() => {
           window.print();
-        }, 300);
+        }, 400);
       } else {
         setBarcodeList([]);
         setErrorMsg("No barcode data found for the specified SKUs.");
@@ -147,19 +156,27 @@ export default function BatchLabelPrintPage() {
     }
   };
 
-  // Group barcode list into rows of 2 (pairs) for table rendering matching PHP template
+  // Build printable items accounting for start position (1-based index)
+  const printableList = useMemo(() => {
+    const startIdx = Math.max(1, parseInt(startPosition, 10) || 1);
+    const blanksCount = startIdx - 1;
+    const blanks = Array(blanksCount).fill(null);
+    return [...blanks, ...barcodeList];
+  }, [barcodeList, startPosition]);
+
+  // Group barcode list into rows of 2 (pairs) for 2-column sticker rolls
   const tableRows = useMemo(() => {
     const rows = [];
-    for (let i = 0; i < barcodeList.length; i += 2) {
-      rows.push([barcodeList[i], barcodeList[i + 1] || null]);
+    for (let i = 0; i < printableList.length; i += 2) {
+      rows.push([printableList[i], printableList[i + 1] || null]);
     }
     return rows;
-  }, [barcodeList]);
+  }, [printableList]);
 
   return (
     <AppLayout>
       <div className="space-y-6 print:m-0 print:p-0 print:space-y-0">
-        {/* Top Header Breadcrumb matching Screenshot */}
+        {/* Top Header Breadcrumb */}
         <div className="space-y-0.5 print:hidden">
           <h1 className="text-xl font-bold text-slate-900">Product</h1>
           <div className="text-xs">
@@ -177,7 +194,7 @@ export default function BatchLabelPrintPage() {
 
           <form onSubmit={handleGenerateAndPrint} className="max-w-xl space-y-4">
             {/* From SKU */}
-            <div className="grid grid-cols-1 sm:grid-cols-[100px_1fr] items-center gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] items-center gap-2">
               <label htmlFor="fromSku" className="text-xs font-bold text-slate-800">
                 From SKU
               </label>
@@ -186,13 +203,13 @@ export default function BatchLabelPrintPage() {
                 type="text"
                 value={fromSku}
                 onChange={(e) => setFromSku(e.target.value)}
-                placeholder="e.g. 1001"
+                placeholder="e.g. 20474"
                 className="w-full sm:max-w-xs bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
               />
             </div>
 
             {/* To SKU */}
-            <div className="grid grid-cols-1 sm:grid-cols-[100px_1fr] items-center gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] items-center gap-2">
               <label htmlFor="toSku" className="text-xs font-bold text-slate-800">
                 To SKU
               </label>
@@ -201,13 +218,13 @@ export default function BatchLabelPrintPage() {
                 type="text"
                 value={toSku}
                 onChange={(e) => setToSku(e.target.value)}
-                placeholder="e.g. 1002"
+                placeholder="e.g. 20474 (optional)"
                 className="w-full sm:max-w-xs bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
               />
             </div>
 
             {/* Quantity */}
-            <div className="grid grid-cols-1 sm:grid-cols-[100px_1fr] items-center gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] items-center gap-2">
               <label htmlFor="qty" className="text-xs font-bold text-slate-800">
                 Quantity
               </label>
@@ -225,6 +242,25 @@ export default function BatchLabelPrintPage() {
               </div>
             </div>
 
+            {/* Start Label Position */}
+            {/* <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] items-center gap-2">
+              <label htmlFor="startPos" className="text-xs font-bold text-slate-800">
+                Start Position
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="startPos"
+                  type="number"
+                  min="1"
+                  max="50"
+                  value={startPosition}
+                  onChange={(e) => setStartPosition(e.target.value)}
+                  className="w-24 bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
+                />
+                <span className="text-xs text-slate-500">(1 = 1st sticker, 2 = 2nd sticker, etc.)</span>
+              </div>
+            </div> */}
+
             {errorMsg && (
               <div className="flex items-center gap-1.5 text-xs text-rose-600 font-medium pt-1">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0" />
@@ -232,7 +268,7 @@ export default function BatchLabelPrintPage() {
               </div>
             )}
 
-            {/* Action Buttons matching screenshot */}
+            {/* Action Buttons */}
             <div className="flex items-center gap-2 pt-3">
               <button
                 type="button"
@@ -260,10 +296,10 @@ export default function BatchLabelPrintPage() {
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">
-                  Print Preview ({barcodeList.length} Labels)
+                  Print Preview ({barcodeList.length} Labels - Starting at Sticker #{startPosition || "1"})
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  PHP Table Template Format with 2-column layout.
+                  2-Column Label Roll Format.
                 </p>
               </div>
 
@@ -277,7 +313,7 @@ export default function BatchLabelPrintPage() {
               </button>
             </div>
 
-            {/* Table layout matching PHP template */}
+            {/* Table layout matching print template */}
             <div className="border border-slate-200 rounded-lg p-6 bg-slate-50/50">
               <div className="max-w-2xl mx-auto bg-white p-6 rounded shadow-xs border border-slate-100">
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -293,28 +329,17 @@ export default function BatchLabelPrintPage() {
                               paddingLeft: "26px",
                               paddingBottom: "18px",
                               verticalAlign: "top",
+                              border: "1px dashed #e2e8f0",
                             }}
                           >
-                            {item && (
+                            {item ? (
                               <div>
                                 <div style={{ fontSize: "13px", fontWeight: "bold" }}>
                                   ₹ {item.rate ?? item.price ?? ""}
                                 </div>
 
                                 <div style={{ margin: "2px 0" }}>
-                                  {item.barcode ? (
-                                    <img
-                                      src={
-                                        item.barcode.startsWith("data:")
-                                          ? item.barcode
-                                          : `data:image/png;base64,${item.barcode}`
-                                      }
-                                      alt={String(item.sku || "")}
-                                      style={{ display: "block", maxHeight: "35px" }}
-                                    />
-                                  ) : (
-                                    <BarcodeSVG value={item.sku} height={30} className="w-44 h-7" />
-                                  )}
+                                  <BarcodeSVG value={item.sku} height={34} className="w-[150px] h-[34px]" />
                                 </div>
 
                                 <div style={{ fontSize: "12px", fontWeight: "bold" }}>
@@ -329,6 +354,10 @@ export default function BatchLabelPrintPage() {
                                   Hunter Menswear Kanyakumari.
                                 </div>
                               </div>
+                            ) : (
+                              <div className="h-full flex items-center justify-center text-[10px] text-slate-300 italic">
+                                [Empty Sticker]
+                              </div>
                             )}
                           </td>
                         ))}
@@ -341,105 +370,124 @@ export default function BatchLabelPrintPage() {
           </div>
         )}
 
-        {/* PRINT ONLY CONTAINER - Exact HTML Table matching PHP Code */}
+        {/* PRINT ONLY CONTAINER - Zero-Offset Absolute Positioned for Thermal Roll Printers */}
         <div id="print-barcode-sheet" className="hidden print:block">
-          <style jsx global>{`
-            @media print {
-              @page {
-                size: auto;
-                margin: 0;
-              }
-              html, body {
-                background: white !important;
-                color: black !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                font-family: Arial, sans-serif !important;
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-              }
-              header, nav, aside, .sidebar, .navbar, .print\\:hidden {
-                display: none !important;
-                height: 0 !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                visibility: hidden !important;
-              }
-              #print-barcode-sheet {
-                display: block !important;
-                width: 100% !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                padding-top: 10px !important;
-              }
-              p.inline { display: inline-block; }
-              span { font-size: 13px; }
-              div.b128 { border-left: 1px black solid; height: 20px; }
-            }
-          `}</style>
-
-          <table width="100%" style={{ width: "100%", borderCollapse: "collapse", margin: 0, padding: 0 }}>
+          <table
+            width="100%"
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              margin: 0,
+              padding: 0,
+            }}
+          >
             <tbody>
               {tableRows.map((row, rIdx) => (
-                <React.Fragment key={rIdx}>
-                  <tr>
-                    {row.map((item, cIdx) => (
-                      <td
-                        key={cIdx}
-                        width="50%"
-                        height="100"
-                        style={{
-                          width: "50%",
-                          height: "100px",
-                          paddingLeft: "26px",
-                          paddingBottom: "14px",
-                          verticalAlign: "top",
-                        }}
-                      >
-                        {item && (
-                          <div>
-                            <div style={{ fontSize: "13px", fontWeight: "normal" }}>
-                              ₹ {item.rate ?? item.price ?? ""}
-                            </div>
-
-                            <div style={{ margin: "2px 0" }}>
-                              {item.barcode ? (
-                                <img
-                                  src={
-                                    item.barcode.startsWith("data:")
-                                      ? item.barcode
-                                      : `data:image/png;base64,${item.barcode}`
-                                  }
-                                  alt={String(item.sku || "")}
-                                  style={{ display: "block", maxHeight: "35px" }}
-                                />
-                              ) : (
-                                <BarcodeSVG value={item.sku} height={30} className="w-40 h-7" />
-                              )}
-                            </div>
-
-                            <div style={{ fontSize: "12px", fontWeight: "normal" }}>
-                              {item.sku}
-                            </div>
-
-                            <div style={{ fontSize: "10px", lineHeight: "1.25" }}>
-                              {item.name}
-                              <br />
-                              {item.size || item.variant || ""}
-                              <br />
-                              Hunter Menswear Kanyakumari.
-                            </div>
+                <tr key={rIdx}>
+                  {row.map((item, cIdx) => (
+                    <td
+                      key={cIdx}
+                      width="50%"
+                      style={{
+                        width: "50%",
+                        height: "100px",
+                        paddingLeft: "26px",
+                        paddingBottom: "14px",
+                        verticalAlign: "top",
+                        boxSizing: "border-box",
+                      }}
+                    >
+                      {item && (
+                        <div>
+                          <div style={{ fontSize: "13px", fontWeight: "normal" }}>
+                            ₹ {item.rate ?? item.price ?? ""}
                           </div>
-                        )}
-                      </td>
-                    ))}
-                  </tr>
-                </React.Fragment>
+
+                          <div style={{ margin: "2px 0" }}>
+                            <BarcodeSVG value={item.sku} height={34} className="w-[150px] h-[34px]" />
+                          </div>
+
+                          <div style={{ fontSize: "12px", fontWeight: "normal" }}>
+                            {item.sku}
+                          </div>
+
+                          <div style={{ fontSize: "10px", lineHeight: "1.25" }}>
+                            {item.name}
+                            <br />
+                            {item.size || item.variant || ""}
+                            <br />
+                            Hunter Menswear Kanyakumari.
+                          </div>
+                        </div>
+                      )}
+                    </td>
+                  ))}
+                </tr>
               ))}
             </tbody>
           </table>
         </div>
       </div>
+
+      <style jsx global>{`
+        @media print {
+          @page {
+            size: auto;
+            margin: 0mm !important;
+          }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            font-family: Arial, sans-serif !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            height: auto !important;
+            min-height: 0 !important;
+          }
+          body * {
+            visibility: hidden !important;
+          }
+          #print-barcode-sheet,
+          #print-barcode-sheet * {
+            visibility: visible !important;
+          }
+          #print-barcode-sheet {
+            display: block !important;
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-sizing: border-box !important;
+          }
+          #print-barcode-sheet table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          #print-barcode-sheet td {
+            width: 50% !important;
+            height: 100px !important;
+            padding-left: 26px !important;
+            padding-bottom: 14px !important;
+            vertical-align: top !important;
+            box-sizing: border-box !important;
+          }
+          #print-barcode-sheet svg {
+            max-width: 150px !important;
+            width: 150px !important;
+            height: 34px !important;
+            display: block !important;
+            image-rendering: pixelated !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+        }
+      `}</style>
     </AppLayout>
   );
 }

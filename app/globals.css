@@ -66,8 +66,7 @@ body {
 @media print {
   @page {
     size: auto;
-    margin: 0;
-    margin-top: 2px;
+    margin: 0 !important;
   }
   header, nav, aside, .sidebar, [role="navigation"] {
     display: none !important;
