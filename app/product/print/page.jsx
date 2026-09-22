@@ -97,11 +97,165 @@ function BarcodeSVG({ value, height = 34, className = "" }) {
   );
 }
 
+function getBarcodeSvgString(value, height = 34) {
+  const bars = generateCode128Bars(value);
+  const barWidth = bars.reduce((sum, b) => sum + b.width, 0);
+  const quietZone = 10;
+  const totalWidth = barWidth + quietZone * 2;
+  let currentX = quietZone;
+
+  let rects = "";
+  for (let i = 0; i < bars.length; i++) {
+    const bar = bars[i];
+    const x = currentX;
+    currentX += bar.width;
+    if (bar.isBar) {
+      rects += `<rect x="${x}" y="0" width="${bar.width}" height="${height}" fill="#000000" />`;
+    }
+  }
+
+  return `<svg viewBox="0 0 ${Math.max(totalWidth, 20)} ${height}" width="145" height="${height}" preserveAspectRatio="none" shape-rendering="crispEdges" style="display:block;background:#ffffff;"><rect x="0" y="0" width="${Math.max(totalWidth, 20)}" height="${height}" fill="#ffffff" />${rects}</svg>`;
+}
+
+function buildPrintHtml(rows) {
+  let tableRowsHtml = "";
+  for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+    const row = rows[rIdx];
+    let rowCellsHtml = "";
+    for (let cIdx = 0; cIdx < 2; cIdx++) {
+      const item = row[cIdx];
+      if (item) {
+        const svg = getBarcodeSvgString(item.sku, 32);
+        rowCellsHtml += `
+          <td style="width: 50%; height: 96px; padding-left: 24px; padding-bottom: 6px; padding-top: 2px; vertical-align: top; box-sizing: border-box;">
+            <div style="font-size: 13px; font-weight: bold; line-height: 1.1; margin: 0; padding: 0; margin-top: 2px;">
+              ₹ ${item.rate ?? item.price ?? ""}
+            </div>
+            <div style="margin: 2px 0; padding: 0;">
+              ${svg}
+            </div>
+            <div style="font-size: 12px; font-weight: bold; line-height: 1.1; margin: 0; padding: 0;">
+              ${item.sku || ""}
+            </div>
+            <div style="font-size: 9.5px; line-height: 1.2; max-width: 165px; word-break: break-word; margin: 0; padding: 0;">
+              ${item.name || ""}<br/>
+              ${item.size || item.variant || ""}<br/>
+              Hunter Menswear Kanyakumari.
+            </div>
+          </td>
+        `;
+      } else {
+        rowCellsHtml += `
+          <td style="width: 50%; height: 96px; padding: 0; margin: 0; box-sizing: border-box;"></td>
+        `;
+      }
+    }
+    tableRowsHtml += `<tr style="height: 96px;">${rowCellsHtml}</tr>`;
+  }
+
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Barcode Print</title>
+    <style>
+      @page {
+        size: auto;
+        margin: 0mm !important;
+        margin-top: 2px !important;
+      }
+      *, *::before, *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        margin-top: 2px !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+        font-family: Arial, sans-serif !important;
+        width: 100% !important;
+        height: auto !important;
+        min-height: 0 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        margin: 0 !important;
+        margin-top: 2px !important;
+        padding: 0 !important;
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+      }
+      tr {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        height: 96px !important;
+      }
+      td {
+        width: 50% !important;
+        height: 96px !important;
+        vertical-align: top !important;
+      }
+      svg {
+        image-rendering: pixelated !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+    </style>
+  </head>
+  <body>
+    <table>
+      <tbody>
+        ${tableRowsHtml}
+      </tbody>
+    </table>
+  </body>
+</html>`;
+}
+
+function printThermalLabels(htmlContent) {
+  if (typeof window === "undefined") return;
+
+  let iframe = document.getElementById("thermal-print-iframe");
+  if (!iframe) {
+    iframe = document.createElement("iframe");
+    iframe.id = "thermal-print-iframe";
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "none";
+    iframe.style.opacity = "0";
+    iframe.style.pointerEvents = "none";
+    document.body.appendChild(iframe);
+  }
+
+  const doc = iframe.contentWindow.document;
+  doc.open();
+  doc.write(htmlContent);
+  doc.close();
+
+  setTimeout(() => {
+    try {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    } catch (e) {
+      console.error("Iframe print error, falling back to window.print():", e);
+      window.print();
+    }
+  }, 300);
+}
+
 export default function BatchLabelPrintPage() {
   const [fromSku, setFromSku] = useState("");
   const [toSku, setToSku] = useState("");
   const [quantity, setQuantity] = useState("1");
-  const [startPosition, setStartPosition] = useState("1");
   const [loading, setLoading] = useState(false);
   const [barcodeList, setBarcodeList] = useState([]);
   const [errorMsg, setErrorMsg] = useState("");
@@ -110,10 +264,18 @@ export default function BatchLabelPrintPage() {
     setFromSku("");
     setToSku("");
     setQuantity("1");
-    setStartPosition("1");
     setBarcodeList([]);
     setErrorMsg("");
   };
+
+  // Group barcode list into rows of 2 (pairs) for 2-column sticker rolls
+  const tableRows = useMemo(() => {
+    const rows = [];
+    for (let i = 0; i < barcodeList.length; i += 2) {
+      rows.push([barcodeList[i], barcodeList[i + 1] || null]);
+    }
+    return rows;
+  }, [barcodeList]);
 
   const handleGenerateAndPrint = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -140,10 +302,16 @@ export default function BatchLabelPrintPage() {
 
       if (Array.isArray(list) && list.length > 0) {
         setBarcodeList(list);
-        // Trigger Print Dialog
-        setTimeout(() => {
-          window.print();
-        }, 400);
+
+        // Group rows for printing
+        const rows = [];
+        for (let i = 0; i < list.length; i += 2) {
+          rows.push([list[i], list[i + 1] || null]);
+        }
+
+        // Print via isolated iframe to guarantee 0 margin, label 1 start, and no trailing blank rows
+        const printHtml = buildPrintHtml(rows);
+        printThermalLabels(printHtml);
       } else {
         setBarcodeList([]);
         setErrorMsg("No barcode data found for the specified SKUs.");
@@ -156,22 +324,11 @@ export default function BatchLabelPrintPage() {
     }
   };
 
-  // Build printable items accounting for start position (1-based index)
-  const printableList = useMemo(() => {
-    const startIdx = Math.max(1, parseInt(startPosition, 10) || 1);
-    const blanksCount = startIdx - 1;
-    const blanks = Array(blanksCount).fill(null);
-    return [...blanks, ...barcodeList];
-  }, [barcodeList, startPosition]);
-
-  // Group barcode list into rows of 2 (pairs) for 2-column sticker rolls
-  const tableRows = useMemo(() => {
-    const rows = [];
-    for (let i = 0; i < printableList.length; i += 2) {
-      rows.push([printableList[i], printableList[i + 1] || null]);
-    }
-    return rows;
-  }, [printableList]);
+  const handlePrintPreview = () => {
+    if (tableRows.length === 0) return;
+    const printHtml = buildPrintHtml(tableRows);
+    printThermalLabels(printHtml);
+  };
 
   return (
     <AppLayout>
@@ -203,7 +360,7 @@ export default function BatchLabelPrintPage() {
                 type="text"
                 value={fromSku}
                 onChange={(e) => setFromSku(e.target.value)}
-                placeholder="e.g. 20474"
+                placeholder="e.g. 20483"
                 className="w-full sm:max-w-xs bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
               />
             </div>
@@ -218,7 +375,7 @@ export default function BatchLabelPrintPage() {
                 type="text"
                 value={toSku}
                 onChange={(e) => setToSku(e.target.value)}
-                placeholder="e.g. 20474 (optional)"
+                placeholder="e.g. 20483 (optional)"
                 className="w-full sm:max-w-xs bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
               />
             </div>
@@ -241,25 +398,6 @@ export default function BatchLabelPrintPage() {
                 <span className="text-xs text-slate-500">(per SKU)</span>
               </div>
             </div>
-
-            {/* Start Label Position */}
-            {/* <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr] items-center gap-2">
-              <label htmlFor="startPos" className="text-xs font-bold text-slate-800">
-                Start Position
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  id="startPos"
-                  type="number"
-                  min="1"
-                  max="50"
-                  value={startPosition}
-                  onChange={(e) => setStartPosition(e.target.value)}
-                  className="w-24 bg-white border border-slate-300 rounded px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
-                />
-                <span className="text-xs text-slate-500">(1 = 1st sticker, 2 = 2nd sticker, etc.)</span>
-              </div>
-            </div> */}
 
             {errorMsg && (
               <div className="flex items-center gap-1.5 text-xs text-rose-600 font-medium pt-1">
@@ -296,16 +434,16 @@ export default function BatchLabelPrintPage() {
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">
-                  Print Preview ({barcodeList.length} Labels - Starting at Sticker #{startPosition || "1"})
+                  Print Preview ({barcodeList.length} Labels)
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  2-Column Label Roll Format.
+                  2-Column Thermal Label Roll Format.
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => window.print()}
+                onClick={handlePrintPreview}
                 className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded shadow-xs cursor-pointer"
               >
                 <Printer className="w-3.5 h-3.5" />
@@ -326,7 +464,7 @@ export default function BatchLabelPrintPage() {
                             style={{
                               width: "50%",
                               height: "100px",
-                              paddingLeft: "26px",
+                              paddingLeft: "24px",
                               paddingBottom: "18px",
                               verticalAlign: "top",
                               border: "1px dashed #e2e8f0",
@@ -339,7 +477,7 @@ export default function BatchLabelPrintPage() {
                                 </div>
 
                                 <div style={{ margin: "2px 0" }}>
-                                  <BarcodeSVG value={item.sku} height={34} className="w-[150px] h-[34px]" />
+                                  <BarcodeSVG value={item.sku} height={34} className="w-[145px] h-[34px]" />
                                 </div>
 
                                 <div style={{ fontSize: "12px", fontWeight: "bold" }}>
@@ -370,7 +508,7 @@ export default function BatchLabelPrintPage() {
           </div>
         )}
 
-        {/* PRINT ONLY CONTAINER - Zero-Offset Absolute Positioned for Thermal Roll Printers */}
+        {/* PRINT ONLY CONTAINER (Fallback for direct browser print) */}
         <div id="print-barcode-sheet" className="hidden print:block">
           <table
             width="100%"
@@ -383,35 +521,36 @@ export default function BatchLabelPrintPage() {
           >
             <tbody>
               {tableRows.map((row, rIdx) => (
-                <tr key={rIdx}>
+                <tr key={rIdx} style={{ height: "96px" }}>
                   {row.map((item, cIdx) => (
                     <td
                       key={cIdx}
                       width="50%"
                       style={{
                         width: "50%",
-                        height: "100px",
-                        paddingLeft: "26px",
-                        paddingBottom: "14px",
+                        height: "96px",
+                        paddingLeft: "24px",
+                        paddingBottom: "6px",
+                        paddingTop: "0",
                         verticalAlign: "top",
                         boxSizing: "border-box",
                       }}
                     >
                       {item && (
                         <div>
-                          <div style={{ fontSize: "13px", fontWeight: "normal" }}>
+                          <div style={{ fontSize: "13px", fontWeight: "bold", lineHeight: "1.1" }}>
                             ₹ {item.rate ?? item.price ?? ""}
                           </div>
 
                           <div style={{ margin: "2px 0" }}>
-                            <BarcodeSVG value={item.sku} height={34} className="w-[150px] h-[34px]" />
+                            <BarcodeSVG value={item.sku} height={32} className="w-[145px] h-[32px]" />
                           </div>
 
-                          <div style={{ fontSize: "12px", fontWeight: "normal" }}>
+                          <div style={{ fontSize: "12px", fontWeight: "bold", lineHeight: "1.1" }}>
                             {item.sku}
                           </div>
 
-                          <div style={{ fontSize: "10px", lineHeight: "1.25" }}>
+                          <div style={{ fontSize: "9.5px", lineHeight: "1.2", maxWidth: "165px", wordBreak: "break-word" }}>
                             {item.name}
                             <br />
                             {item.size || item.variant || ""}
@@ -434,10 +573,12 @@ export default function BatchLabelPrintPage() {
           @page {
             size: auto;
             margin: 0mm !important;
+            margin-top: 2px !important;
           }
           html, body {
             margin: 0 !important;
             padding: 0 !important;
+            margin-top: 2px !important;
             background: #ffffff !important;
             color: #000000 !important;
             font-family: Arial, sans-serif !important;
@@ -460,6 +601,7 @@ export default function BatchLabelPrintPage() {
             top: 0 !important;
             width: 100% !important;
             margin: 0 !important;
+            margin-top: 2px !important;
             padding: 0 !important;
             box-sizing: border-box !important;
           }
@@ -467,20 +609,22 @@ export default function BatchLabelPrintPage() {
             width: 100% !important;
             border-collapse: collapse !important;
             margin: 0 !important;
+            margin-top: 2px !important;
             padding: 0 !important;
           }
           #print-barcode-sheet td {
             width: 50% !important;
-            height: 100px !important;
-            padding-left: 26px !important;
-            padding-bottom: 14px !important;
+            height: 96px !important;
+            padding-left: 24px !important;
+            padding-bottom: 6px !important;
+            padding-top: 2px !important;
             vertical-align: top !important;
             box-sizing: border-box !important;
           }
           #print-barcode-sheet svg {
-            max-width: 150px !important;
-            width: 150px !important;
-            height: 34px !important;
+            max-width: 145px !important;
+            width: 145px !important;
+            height: 32px !important;
             display: block !important;
             image-rendering: pixelated !important;
             -webkit-print-color-adjust: exact !important;
