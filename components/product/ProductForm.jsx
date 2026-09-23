@@ -20,6 +20,7 @@ import {
   AlertCircle,
   Image as ImageIcon,
   Images,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -140,6 +141,8 @@ export function ProductForm({
   const [availableAttributeOptions, setAvailableAttributeOptions] = useState([]);
   const [isOptionsDropdownOpen, setIsOptionsDropdownOpen] = useState(false);
   const [selectedOptions, setSelectedOptions] = useState([]);
+  const [attrSearch, setAttrSearch] = useState("");
+  const [valuesSearch, setValuesSearch] = useState("");
   const [variantToDelete, setVariantToDelete] = useState(null);
   const [deletingVariant, setDeletingVariant] = useState(false);
 
@@ -1191,29 +1194,61 @@ export function ProductForm({
                 {/* Attribute Dropdown Menu */}
                 {isAttrDropdownOpen && (
                   <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden text-xs animate-in fade-in">
-                    {allAttributes.filter((attr) => !selectedAttributes.some((a) => String(a.id) === String(attr.id))).length === 0 ? (
-                      <div className="p-3 text-slate-400 text-center bg-slate-50 font-medium">
-                        No choices to choose from
+                    {/* Search Filter Input */}
+                    <div className="p-2 border-b border-slate-100 bg-slate-50/90 sticky top-0 z-10" onClick={(e) => e.stopPropagation()}>
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        <input
+                          type="text"
+                          value={attrSearch}
+                          onChange={(e) => setAttrSearch(e.target.value)}
+                          placeholder="Type words to search attributes..."
+                          className="w-full pl-8 pr-7 py-1.5 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 text-slate-800 placeholder:text-slate-400"
+                          autoFocus
+                        />
+                        {attrSearch && (
+                          <button
+                            type="button"
+                            onClick={() => setAttrSearch("")}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
                       </div>
-                    ) : (
-                      <div className="max-h-56 overflow-y-auto divide-y divide-slate-100">
-                        {allAttributes
+                    </div>
+
+                    <div className="max-h-56 overflow-y-auto divide-y divide-slate-100">
+                      {allAttributes.filter((attr) => !selectedAttributes.some((a) => String(a.id) === String(attr.id))).length === 0 ? (
+                        <div className="p-3 text-slate-400 text-center bg-slate-50 font-medium">
+                          No choices to choose from
+                        </div>
+                      ) : allAttributes
+                        .filter((attr) => !selectedAttributes.some((a) => String(a.id) === String(attr.id)))
+                        .filter((attr) => !attrSearch.trim() || String(attr.name || "").toLowerCase().includes(attrSearch.toLowerCase().trim())).length === 0 ? (
+                        <div className="p-3 text-slate-400 text-center bg-white font-medium">
+                          No attributes match &quot;{attrSearch}&quot;
+                        </div>
+                      ) : (
+                        allAttributes
                           .filter((attr) => !selectedAttributes.some((a) => String(a.id) === String(attr.id)))
+                          .filter((attr) => !attrSearch.trim() || String(attr.name || "").toLowerCase().includes(attrSearch.toLowerCase().trim()))
                           .map((attr) => (
                             <div
                               key={attr.id}
                               onClick={() => {
                                 handleToggleAttribute(attr);
+                                setAttrSearch("");
                                 setIsAttrDropdownOpen(false);
                               }}
                               className="p-2.5 flex items-center justify-between hover:bg-emerald-50/70 cursor-pointer transition text-slate-800 font-medium"
                             >
                               <span>{attr.name}</span>
-                              <span className="text-[10px] text-slate-400">Press to select</span>
+                              <span className="text-[10px] text-emerald-600 font-semibold">+ Add</span>
                             </div>
-                          ))}
-                      </div>
-                    )}
+                          ))
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1280,42 +1315,98 @@ export function ProductForm({
 
                     {/* Options Dropdown Menu */}
                     {isOptionsDropdownOpen && (
-                      <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden text-xs max-h-64 overflow-y-auto divide-y divide-slate-100 animate-in fade-in">
-                        {availableAttributeOptions.filter((opt) => !selectedOptions.includes(opt.termText)).length === 0 ? (
-                          <div className="p-3 text-slate-400 text-center bg-slate-50 font-medium">
-                            No choices to choose from
+                      <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden text-xs animate-in fade-in">
+                        {/* Search Filter Input */}
+                        <div className="p-2 border-b border-slate-100 bg-slate-50/90 sticky top-0 z-10" onClick={(e) => e.stopPropagation()}>
+                          <div className="relative">
+                            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                            <input
+                              type="text"
+                              value={valuesSearch}
+                              onChange={(e) => setValuesSearch(e.target.value)}
+                              placeholder="Type words to search values..."
+                              className="w-full pl-8 pr-7 py-1.5 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 text-slate-800 placeholder:text-slate-400"
+                              autoFocus
+                            />
+                            {valuesSearch && (
+                              <button
+                                type="button"
+                                onClick={() => setValuesSearch("")}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
                           </div>
-                        ) : (
-                          availableAttributeOptions
-                            .filter((opt) => !selectedOptions.includes(opt.termText))
-                            .map((optItem) => {
-                              const termText = optItem.termText;
+                        </div>
 
+                        {/* Options List */}
+                        <div className="max-h-60 overflow-y-auto divide-y divide-slate-100">
+                          {availableAttributeOptions.filter((opt) => !selectedOptions.includes(opt.termText)).length === 0 ? (
+                            <div className="p-3 text-slate-400 text-center bg-slate-50 font-medium">
+                              No choices to choose from
+                            </div>
+                          ) : availableAttributeOptions
+                            .filter((opt) => !selectedOptions.includes(opt.termText))
+                            .filter((opt) => {
+                              if (!valuesSearch.trim()) return true;
+                              const q = valuesSearch.toLowerCase().trim();
                               return (
-                                <div
-                                  key={optItem.id || termText}
-                                  onClick={() => {
-                                    setSelectedOptions((prev) => [...prev, termText]);
-                                    setFormData((prev) => ({
-                                      ...prev,
-                                      attribute_options: [...prev.attribute_options, termText],
-                                      variants: [
-                                        ...prev.variants,
-                                        { id: termText, name: termText, stock: "1", isOpen: true },
-                                      ],
-                                    }));
-                                    setIsOptionsDropdownOpen(false);
-                                  }}
-                                  className="px-3 py-2.5 flex items-center justify-between cursor-pointer transition hover:bg-emerald-50/70 text-slate-800 font-medium"
-                                >
-                                  <span>{termText}</span>
-                                  <span className="text-[10px] text-slate-400">
-                                    Press to select
-                                  </span>
-                                </div>
+                                String(opt.termText || "").toLowerCase().includes(q) ||
+                                String(opt.attributeName || "").toLowerCase().includes(q)
                               );
-                            })
-                        )}
+                            }).length === 0 ? (
+                            <div className="p-3 text-slate-400 text-center bg-white font-medium">
+                              No values match &quot;{valuesSearch}&quot;
+                            </div>
+                          ) : (
+                            availableAttributeOptions
+                              .filter((opt) => !selectedOptions.includes(opt.termText))
+                              .filter((opt) => {
+                                if (!valuesSearch.trim()) return true;
+                                const q = valuesSearch.toLowerCase().trim();
+                                return (
+                                  String(opt.termText || "").toLowerCase().includes(q) ||
+                                  String(opt.attributeName || "").toLowerCase().includes(q)
+                                );
+                              })
+                              .map((optItem) => {
+                                const termText = optItem.termText;
+
+                                return (
+                                  <div
+                                    key={optItem.id || termText}
+                                    onClick={() => {
+                                      setSelectedOptions((prev) => [...prev, termText]);
+                                      setFormData((prev) => ({
+                                        ...prev,
+                                        attribute_options: [...prev.attribute_options, termText],
+                                        variants: [
+                                          ...prev.variants,
+                                          { id: termText, name: termText, stock: "1", isOpen: true },
+                                        ],
+                                      }));
+                                      setValuesSearch("");
+                                      setIsOptionsDropdownOpen(false);
+                                    }}
+                                    className="px-3 py-2.5 flex items-center justify-between cursor-pointer transition hover:bg-emerald-50/70 text-slate-800 font-medium"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <span>{termText}</span>
+                                      {optItem.attributeName && selectedAttributes.length > 1 && (
+                                        <span className="text-[10px] text-slate-400 font-normal">
+                                          ({optItem.attributeName})
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="text-[10px] text-emerald-600 font-semibold">
+                                      + Add
+                                    </span>
+                                  </div>
+                                );
+                              })
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>

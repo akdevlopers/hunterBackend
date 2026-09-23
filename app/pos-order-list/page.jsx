@@ -2,8 +2,10 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Eye,
+  Pencil,
   Printer,
   Trash2,
   Search,
@@ -15,6 +17,7 @@ import { OrderPreviewModal } from "@/components/order/OrderPreviewModal";
 import { api } from "@/lib/api";
 
 export default function PosOrderListPage() {
+  const router = useRouter();
   const todayStr = new Date().toISOString().slice(0, 10);
 
   const [posResponse, setPosResponse] = useState({
@@ -77,6 +80,16 @@ export default function PosOrderListPage() {
       await api.deletePosOrder(orderId, fromDate, toDate);
       loadData(page);
     }
+  };
+
+  const handleEditOrder = (order) => {
+    const orderId = order.id || order.order_id || order.product_order_id;
+    if (typeof window !== "undefined") {
+      try {
+        sessionStorage.setItem("pos_edit_order", JSON.stringify(order));
+      } catch (e) {}
+    }
+    router.push(`/pos?edit_order_id=${orderId}`);
   };
 
   const handlePrintReceipt = (orderId) => {
@@ -175,7 +188,7 @@ export default function PosOrderListPage() {
                       const orderPrice =
                         order.final_price ?? order.price ?? order.total ?? 0;
                       const paymentInfo =
-                        `${order.customer_payment_type || order.payment_type || "Cash"}`;
+                        `${order.customer_payment_type || order.payment_type || "Cash"} / ${order.delivery_comment}`;
 
                       return (
                         <tr
@@ -207,6 +220,16 @@ export default function PosOrderListPage() {
                                 title="View Order Preview"
                               >
                                 <Eye className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Edit Order in POS button */}
+                              <button
+                                type="button"
+                                onClick={() => handleEditOrder(order)}
+                                className="w-7 h-7 inline-flex items-center justify-center rounded-md bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs transition cursor-pointer"
+                                title="Edit in POS"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
                               </button>
 
                               {/* Print button */}

@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   Search,
   Plus,
@@ -13,8 +14,13 @@ import {
   QrCode,
   Camera,
   CheckCircle2,
+  AlertCircle,
+  Lock,
   Sparkles,
   Zap,
+  ArrowLeft,
+  X,
+  Edit3,
 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { POSPayModal } from "@/components/pos/POSPayModal";
@@ -94,7 +100,9 @@ function parseScannedCode(raw) {
   return str;
 }
 
-export default function POSPage() {
+function POSContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("walkin");
@@ -105,6 +113,10 @@ export default function POSPage() {
   const [discount, setDiscount] = useState("");
   const [gst, setGst] = useState("");
   const [notes, setNotes] = useState("");
+  const [editingOrderInfo, setEditingOrderInfo] = useState(null);
+  const [isLoadingEditOrder, setIsLoadingEditOrder] = useState(false);
+
+  const isEditMode = Boolean(editingOrderInfo);
 
   // Scanner & Modal States
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
@@ -114,10 +126,12 @@ export default function POSPage() {
 
   const searchInputRef = useRef(null);
 
-  // Auto-focus search input on mount and on return
+  // Auto-focus search input on mount and on return (only if not in edit mode)
   useEffect(() => {
-    searchInputRef.current?.focus();
-  }, []);
+    if (!isEditMode) {
+      searchInputRef.current?.focus();
+    }
+  }, [isEditMode]);
 
   useEffect(() => {
     async function load() {
@@ -129,9 +143,218 @@ export default function POSPage() {
     load();
   }, []);
 
+  // Preload Order Data when navigating from PosOrderListPage with edit_order_id
+  useEffect(() => {
+    const editOrderId =
+      searchParams.get("edit_order_id") ||
+      searchParams.get("order_id") ||
+      searchParams.get("id");
+
+    if (!editOrderId) return;
+
+    async function loadEditOrder() {
+      setIsLoadingEditOrder(true);
+      let orderData = null;
+
+      // 1. Check sessionStorage for instant pre-population
+      if (typeof window !== "undefined") {
+        try {
+          const cached = sessionStorage.getItem("pos_edit_order");
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (
+              String(parsed.id || parsed.order_id || parsed.product_order_id) ===
+              String(editOrderId)
+            ) {
+              orderData = parsed;
+            }
+          }
+        } catch (e) { }
+      }
+
+      // 2. Fetch fresh detailed order details from server
+      try {
+        const res = await api.getOrderById(editOrderId);
+        if (res) {
+          const fetchedOrder = res.order || res.data?.order || res.data || res;
+          const fetchedProducts =
+            res.products || res.data?.products || fetchedOrder?.products;
+          orderData = {
+            ...(orderData || {}),
+            ...fetchedOrder,
+            products:
+              Array.isArray(fetchedProducts) && fetchedProducts.length > 0
+                ? fetchedProducts
+                : orderData?.products || [],
+          };
+        }
+      } catch (err) {
+        console.error("Error loading order for edit in POS:", err);
+      }
+
+      if (!orderData) {
+        setIsLoadingEditOrder(false);
+        return;
+      }
+
+      const orderCode =
+        orderData.product_order_id ||
+        orderData.order_id ||
+        orderData.id ||
+        editOrderId;
+
+      setEditingOrderInfo({
+        id: editOrderId,
+        orderCode: orderCode,
+        originalOrder: orderData,
+      });
+
+      // Populate Items into Cart
+      const rawItems =
+        Array.isArray(orderData.products) && orderData.products.length > 0
+          ? orderData.products
+          : Array.isArray(orderData.items) && orderData.items.length > 0
+            ? orderData.items
+            : orderData.product_name || orderData.name
+              ? [
+                {
+                  id: orderData.product_id || orderData.id || 1,
+                  name: orderData.product_name || orderData.name,
+                  variant_name:
+                    orderData.variant_name || orderData.variant || "Standard",
+                  qty: orderData.products_count || orderData.qty || 1,
+                  final_price:
+                    orderData.product_price ||
+                    orderData.final_price ||
+                    orderData.price ||
+                    0,
+                  cover_image:
+                    orderData.cover_image_url || orderData.cover_image || "",
+                },
+              ]
+              : [];
+
+      const newCart = rawItems.map((item, idx) => {
+        const qty = Number(item.qty ?? item.quantity ?? item.products_count ?? 1);
+        const unitPrice =
+          item.sale_price !== undefined && item.sale_price !== null && !isNaN(Number(item.sale_price))
+            ? Number(item.sale_price)
+            : item.orignal_price !== undefined && item.orignal_price !== null && !isNaN(Number(item.orignal_price))
+              ? Number(item.orignal_price)
+              : item.price !== undefined && item.price !== null && !isNaN(Number(item.price))
+                ? Number(item.price)
+                : item.final_price !== undefined && item.final_price !== null && !isNaN(Number(item.final_price))
+                  ? Number(item.final_price) / (qty || 1)
+                  : Number(item.product_price || 0);
+
+        return {
+          id: Date.now() + Math.random() + idx,
+          product_id: item.product_id || item.productId || item.id || Date.now(),
+          variant_id:
+            item.variant_id ||
+            item.product_variant_id ||
+            item.productVariantId ||
+            item.variantId ||
+            null,
+          name: item.name || item.product_name || item.title || "Product",
+          variant:
+            item.variant_name ||
+            item.variant ||
+            item.product_variant_name ||
+            "Standard",
+          sku:
+            item.sku ||
+            item.sku_code ||
+            item.product_sku ||
+            item.variant_sku ||
+            "",
+          quantity: qty,
+          sale_price: unitPrice,
+          purchase_price: Number(item.purchase_price || 0),
+          cover_image:
+            item.cover_image ||
+            item.cover_image_url ||
+            item.image ||
+            item.image_url ||
+            item.product_image ||
+            "",
+          stock:
+            item.stock !== undefined && item.stock !== null
+              ? Number(item.stock)
+              : null,
+        };
+      });
+
+      if (newCart.length > 0) {
+        setCart(newCart);
+      }
+
+      // Populate Customer
+      const custId =
+        orderData.customer_id ||
+        orderData.user_id ||
+        orderData.customer?.id ||
+        orderData.customer_info?.id;
+
+      if (custId && String(custId) !== "0") {
+        setSelectedCustomerId(String(custId));
+      } else if (
+        orderData.customer_name ||
+        orderData.customer?.name ||
+        orderData.customer_info?.name
+      ) {
+        const custObj = orderData.customer_info ||
+          orderData.customer || {
+          id: `custom_${custId || Date.now()}`,
+          name: orderData.customer_name || orderData.name || "Customer",
+          email: orderData.customer_email || orderData.email || "-",
+          mobile: orderData.customer_phone || orderData.phone || "-",
+        };
+        setCustomers((prev) => {
+          const exists = prev.some(
+            (c) =>
+              String(c.id) === String(custObj.id) || c.name === custObj.name
+          );
+          if (!exists) return [custObj, ...prev];
+          return prev;
+        });
+        setSelectedCustomerId(String(custObj.id));
+      }
+
+      // Populate Discount, GST, Notes
+      const discVal = orderData.coupon_price ?? orderData.discount;
+      if (discVal !== undefined && discVal !== null && Number(discVal) > 0) {
+        setDiscount(String(discVal));
+      }
+
+      const gstVal = orderData.gst ?? orderData.tax;
+      if (gstVal !== undefined && gstVal !== null && Number(gstVal) > 0) {
+        setGst(String(gstVal));
+      }
+
+      const noteVal =
+        orderData.delivery_comment ||
+        orderData.notes ||
+        orderData.remark ||
+        orderData.payment_type_notes ||
+        "";
+      if (noteVal) {
+        setNotes(noteVal);
+      }
+
+      // setToastMessage(
+      //   `✓ Order #${orderCode} loaded in Edit Mode. Line items are locked; only Discount and Notes can be edited.`
+      // );
+      // setTimeout(() => setToastMessage(""), 6000);
+      setIsLoadingEditOrder(false);
+    }
+
+    loadEditOrder();
+  }, [searchParams]);
+
   // Debounced SKU search for manual typing
   useEffect(() => {
-    if (!skuSearch.trim()) {
+    if (isEditMode || !skuSearch.trim()) {
       setSkuSuggestions([]);
       setIsSearching(false);
       return;
@@ -158,11 +381,18 @@ export default function POSPage() {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [skuSearch, products]);
+  }, [skuSearch, products, isEditMode]);
 
-  // Add Product to Cart with stock validation
+  // Add Product to Cart with stock validation (Prevented in Edit Mode)
   const handleAddToCart = useCallback(
     (productItem, variantOverride = null) => {
+      if (isEditMode) {
+        playSound("error");
+        setToastMessage("⚠️ Cannot add new products when editing an existing order.");
+        setTimeout(() => setToastMessage(""), 4000);
+        return;
+      }
+
       const productId =
         productItem.productId || productItem.product_id || productItem.id || Date.now();
       const productName =
@@ -198,8 +428,8 @@ export default function POSPage() {
         productItem.quantity ??
         productItem.product_stock ??
         (productItem.variants &&
-        productItem.variants.length > 0 &&
-        typeof productItem.variants[0] === "object"
+          productItem.variants.length > 0 &&
+          typeof productItem.variants[0] === "object"
           ? productItem.variants[0].stock
           : null);
 
@@ -249,8 +479,8 @@ export default function POSPage() {
             availableStock !== null
               ? availableStock
               : item.stock !== null && item.stock !== undefined
-              ? item.stock
-              : null;
+                ? item.stock
+                : null;
 
           const currentQty = Number(item.quantity) || 1;
 
@@ -301,12 +531,19 @@ export default function POSPage() {
         searchInputRef.current?.focus();
       }, 50);
     },
-    [products]
+    [products, isEditMode]
   );
 
-  // Direct Barcode / QR Code Scanner & Enter Key handler: instantly finds product and adds to billing
+  // Direct Barcode / QR Code Scanner & Enter Key handler (Prevented in Edit Mode)
   const handleDirectScanOrSubmit = useCallback(
     async (rawCode) => {
+      if (isEditMode) {
+        playSound("error");
+        setToastMessage("⚠️ Cannot add new products when editing an existing order.");
+        setTimeout(() => setToastMessage(""), 4000);
+        return;
+      }
+
       const code = parseScannedCode(rawCode);
       if (!code) return;
 
@@ -333,7 +570,6 @@ export default function POSPage() {
           // 2. Query backend SKU search endpoint
           const apiResults = await api.searchProductBySku(code);
           if (apiResults && apiResults.length > 0) {
-            // Check if there is an exact SKU match among results
             const exactApi = apiResults.find(
               (r) =>
                 (r.sku && String(r.sku).toLowerCase() === lowerCode) ||
@@ -373,14 +609,14 @@ export default function POSPage() {
         setIsSearching(false);
       }
     },
-    [products, handleAddToCart]
+    [products, handleAddToCart, isEditMode]
   );
 
-  // Global scanner listener: If cashier scans without first focusing the input box, focus and route to search input
+  // Global scanner listener: If cashier scans without first focusing the input box
   useEffect(() => {
     const handleGlobalKeyDown = (e) => {
-      // Don't intercept if user is inside a modal or typing in inputs like notes, discount, gst
-      if (isPayModalOpen || isCameraScannerOpen) return;
+      // Don't intercept if user is inside a modal, typing in inputs, or in order edit mode
+      if (isEditMode || isPayModalOpen || isCameraScannerOpen) return;
       const activeEl = document.activeElement;
       const isInput =
         activeEl &&
@@ -407,10 +643,11 @@ export default function POSPage() {
 
     window.addEventListener("keydown", handleGlobalKeyDown);
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
-  }, [isPayModalOpen, isCameraScannerOpen]);
+  }, [isPayModalOpen, isCameraScannerOpen, isEditMode]);
 
-  // Stepper controls
+  // Stepper controls (Prevented in Edit Mode)
   const handleUpdateQty = (idx, delta) => {
+    if (isEditMode) return;
     const item = cart[idx];
     if (!item) return;
 
@@ -444,17 +681,41 @@ export default function POSPage() {
   };
 
   const handleRemoveItem = (idx) => {
+    if (isEditMode) return;
     setCart((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const handleEmptyCart = () => {
-    if (cart.length === 0) return;
+    if (isEditMode || cart.length === 0) return;
     if (window.confirm("Are you sure you want to empty the POS cart?")) {
       setCart([]);
       setDiscount("");
       setGst("");
       setNotes("");
+      setEditingOrderInfo(null);
+      if (typeof window !== "undefined") {
+        try {
+          sessionStorage.removeItem("pos_edit_order");
+        } catch (e) { }
+      }
     }
+  };
+
+  const handleClearEditMode = () => {
+    setEditingOrderInfo(null);
+    setCart([]);
+    setDiscount("");
+    setGst("");
+    setNotes("");
+    if (typeof window !== "undefined") {
+      try {
+        sessionStorage.removeItem("pos_edit_order");
+      } catch (e) { }
+    }
+    router.replace("/pos");
+    setToastMessage("Edit mode cleared. Ready for new billing.");
+    setTimeout(() => setToastMessage(""), 3500);
+    setTimeout(() => searchInputRef.current?.focus(), 150);
   };
 
   // Calculations
@@ -468,15 +729,18 @@ export default function POSPage() {
     selectedCustomerId === "walkin"
       ? { name: "Walk-in Customer", email: "-", mobile: "-" }
       : customers.find((c) => c.id === Number(selectedCustomerId)) || {
-          name: "Walk-in Customer",
-        };
+        name: "Walk-in Customer",
+      };
 
   // Open PAY Modal
   const handleOpenPayModal = () => {
     if (cart.length === 0) return;
 
     const customerIdNum = selectedCustomerId === "walkin" ? 0 : Number(selectedCustomerId) || 0;
-    const newPosId = Math.floor(1000000000 + Math.random() * 9000000000).toString();
+    const newPosId = editingOrderInfo?.orderCode
+      ? String(editingOrderInfo.orderCode)
+      : Math.floor(1000000000 + Math.random() * 9000000000).toString();
+
     setPayModalData({
       pos_id: newPosId,
       customer_id: customerIdNum,
@@ -495,12 +759,23 @@ export default function POSPage() {
   };
 
   const handleCompletePayment = (paymentType, apiResult) => {
-    const orderId = apiResult?.order_id || apiResult?.id || apiResult?.data?.order_id || "";
-    setToastMessage(`Payment completed successfully! ${orderId ? `Order #${orderId}` : ""}`);
+    const orderId = apiResult?.order_id || apiResult?.id || apiResult?.data?.order_id || editingOrderInfo?.orderCode || "";
+    setToastMessage(
+      isEditMode
+        ? `✓ Order #${orderId} updated successfully!`
+        : `✓ Payment completed successfully! ${orderId ? `Order #${orderId}` : ""}`
+    );
     setCart([]);
     setDiscount("");
     setGst("");
     setNotes("");
+    setEditingOrderInfo(null);
+    if (typeof window !== "undefined") {
+      try {
+        sessionStorage.removeItem("pos_edit_order");
+      } catch (e) { }
+    }
+    router.replace("/pos");
     setTimeout(() => setToastMessage(""), 5000);
     setTimeout(() => searchInputRef.current?.focus(), 200);
   };
@@ -509,14 +784,19 @@ export default function POSPage() {
     <AppLayout>
       <div className="space-y-4 font-sans text-slate-800">
         {/* Top Search & Scanner Bar */}
-        <div className="relative bg-white border border-slate-200 rounded-xl p-3 shadow-2xs">
+        <div className={`relative bg-white border ${isEditMode ? "border-amber-200 bg-amber-50/20" : "border-slate-200"} rounded-xl p-3 shadow-2xs`}>
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
             {/* Search / Scan Input */}
             <div className="relative flex-1">
               <input
                 ref={searchInputRef}
                 type="text"
-                placeholder="Scan Barcode / QR code or Search SKU..."
+                disabled={isEditMode}
+                placeholder={
+                  isEditMode
+                    ? `Edit Order #${editingOrderInfo.orderCode} `
+                    : "Scan Barcode / QR code or Search SKU..."
+                }
                 value={skuSearch}
                 onChange={(e) => setSkuSearch(e.target.value)}
                 onKeyDown={(e) => {
@@ -527,13 +807,21 @@ export default function POSPage() {
                     }
                   }
                 }}
-                className="w-full bg-white border border-slate-200 rounded-lg pl-10 pr-24 py-2.5 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium transition"
+                className={`w-full bg-white border ${isEditMode
+                  ? "border-amber-300 bg-amber-50/40 text-slate-500 cursor-not-allowed"
+                  : "border-slate-200 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  } rounded-lg pl-10 pr-28 py-2.5 text-xs sm:text-sm font-medium transition`}
               />
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+              <Search className={`w-4 h-4 absolute left-3.5 top-3.5 ${isEditMode ? "text-amber-500" : "text-slate-400"}`} />
 
               {/* Status Pill in Input */}
               <div className="absolute right-3 top-2.5 flex items-center gap-1.5 pointer-events-none">
-                {isSearching ? (
+                {isEditMode ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-[10px] font-bold text-amber-800 border border-amber-300">
+                    <Lock className="w-3 h-3 text-amber-700" />
+                    Adding Locked
+                  </span>
+                ) : isSearching ? (
                   <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
                 ) : (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-[10px] font-semibold text-emerald-700 border border-emerald-200">
@@ -545,9 +833,10 @@ export default function POSPage() {
             </div>
 
             {/* Quick Actions: Direct Camera QR Scan & Add button */}
-            <div className="flex items-center gap-2 shrink-0">
+            {/* <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
+                disabled={isEditMode}
                 onClick={() => {
                   if (skuSearch.trim()) {
                     handleDirectScanOrSubmit(skuSearch.trim());
@@ -555,7 +844,11 @@ export default function POSPage() {
                     searchInputRef.current?.focus();
                   }
                 }}
-                className="px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-2xs transition cursor-pointer flex items-center gap-1.5 shrink-0"
+                className={`px-4 py-2.5 rounded-lg text-white text-xs font-bold shadow-2xs transition flex items-center gap-1.5 shrink-0 ${
+                  isEditMode
+                    ? "bg-slate-300 cursor-not-allowed opacity-60"
+                    : "bg-emerald-600 hover:bg-emerald-700 cursor-pointer"
+                }`}
               >
                 <Zap className="w-3.5 h-3.5" />
                 <span>Add Item</span>
@@ -563,18 +856,23 @@ export default function POSPage() {
 
               <button
                 type="button"
+                disabled={isEditMode}
                 onClick={() => setIsCameraScannerOpen(true)}
-                className="px-3.5 py-2.5 rounded-lg border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold shadow-2xs transition cursor-pointer flex items-center gap-1.5 shrink-0"
-                title="Open Camera QR & Barcode Scanner"
+                className={`px-3.5 py-2.5 rounded-lg border text-xs font-bold shadow-2xs transition flex items-center gap-1.5 shrink-0 ${
+                  isEditMode
+                    ? "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed opacity-60"
+                    : "border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 cursor-pointer"
+                }`}
+                title={isEditMode ? "Camera scan disabled in edit mode" : "Open Camera QR & Barcode Scanner"}
               >
-                <Camera className="w-4 h-4 text-emerald-700" />
+                <Camera className="w-4 h-4" />
                 <span className="hidden sm:inline">Camera Scan</span>
               </button>
-            </div>
+            </div> */}
           </div>
 
-          {/* SKU Suggestions Dropdown for partial/manual typing */}
-          {(skuSuggestions.length > 0 || (skuSearch.trim() && !isSearching)) && (
+          {/* SKU Suggestions Dropdown for partial/manual typing (disabled in edit mode) */}
+          {!isEditMode && (skuSuggestions.length > 0 || (skuSearch.trim() && !isSearching)) && (
             <div className="absolute top-full left-0 w-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden divide-y divide-slate-100 max-h-72 overflow-y-auto">
               {skuSuggestions.length === 0 ? (
                 <div className="p-4 text-center text-slate-400 text-xs font-medium flex flex-col items-center gap-1">
@@ -633,11 +931,10 @@ export default function POSPage() {
         {/* Toast Notification */}
         {toastMessage && (
           <div
-            className={`p-3.5 rounded-xl border text-xs font-semibold flex items-center justify-between animate-in fade-in ${
-              toastMessage.startsWith("⚠️")
-                ? "bg-amber-50 border-amber-300 text-amber-900 shadow-2xs"
-                : "bg-emerald-50 border-emerald-200 text-emerald-800 shadow-2xs"
-            }`}
+            className={`p-3.5 rounded-xl border text-xs font-semibold flex items-center justify-between animate-in fade-in ${toastMessage.startsWith("⚠️")
+              ? "bg-amber-50 border-amber-300 text-amber-900 shadow-2xs"
+              : "bg-emerald-50 border-emerald-200 text-emerald-800 shadow-2xs"
+              }`}
           >
             <div className="flex items-center gap-2">
               {!toastMessage.startsWith("⚠️") && (
@@ -647,16 +944,57 @@ export default function POSPage() {
             </div>
             <button
               onClick={() => setToastMessage("")}
-              className={`p-1 rounded hover:bg-black/5 ${
-                toastMessage.startsWith("⚠️")
-                  ? "text-amber-600 hover:text-amber-800"
-                  : "text-emerald-500 hover:text-emerald-700"
-              }`}
+              className={`p-1 rounded hover:bg-black/5 ${toastMessage.startsWith("⚠️")
+                ? "text-amber-600 hover:text-amber-800"
+                : "text-emerald-500 hover:text-emerald-700"
+                }`}
             >
               ✕
             </button>
           </div>
         )}
+
+        {/* Active Order Editing Banner (when loaded from POS Order List) */}
+        {/* {editingOrderInfo && (
+          <div className="bg-amber-50 border-2 border-amber-300 text-amber-950 px-4 py-3.5 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs animate-in fade-in">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-amber-200/80 text-amber-800 flex items-center justify-center shrink-0 mt-0.5 sm:mt-0 font-bold">
+                <Lock className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-xs sm:text-sm text-amber-950">
+                    Order Edit Mode: <span className="font-mono text-amber-900 bg-amber-200/70 px-1.5 py-0.5 rounded font-extrabold">#{editingOrderInfo.orderCode}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300">
+                    <Edit3 className="w-3 h-3 text-emerald-700" /> Only Discount & Notes Editable
+                  </span>
+                </div>
+                <p className="text-[11px] text-amber-800/90 mt-0.5">
+                  Product line items, quantities, and customer details are locked. Only the Discount amount and Notes can be modified.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+              <Link
+                href="/pos-order-list"
+                className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-amber-300 bg-white hover:bg-amber-100/80 text-amber-900 shadow-2xs transition"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>POS Order List</span>
+              </Link>
+              <button
+                type="button"
+                onClick={handleClearEditMode}
+                className="px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-2xs transition cursor-pointer flex items-center gap-1"
+                title="Cancel edit mode and start a new bill"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Cancel Edit</span>
+              </button>
+            </div>
+          </div>
+        )} */}
 
         {/* Main Billing Section & Order Summary Layout */}
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4">
@@ -667,13 +1005,22 @@ export default function POSPage() {
               <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-semibold text-[11px]">
                 {cart.length} item{cart.length === 1 ? "" : "s"}
               </span>
+              {isEditMode && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-bold text-[10px] border border-amber-300">
+                  <Lock className="w-2.5 h-2.5" /> Items Locked
+                </span>
+              )}
             </div>
 
             <div className="w-full sm:w-64">
               <select
+                disabled={isEditMode}
                 value={selectedCustomerId}
                 onChange={(e) => setSelectedCustomerId(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium cursor-pointer shadow-2xs"
+                className={`w-full border rounded-lg px-3 py-1.5 text-xs font-medium shadow-2xs ${isEditMode
+                  ? "bg-slate-100 border-slate-200 text-slate-600 cursor-not-allowed"
+                  : "bg-white border-slate-200 text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                  }`}
               >
                 <option value="walkin">Walk-in-customer</option>
                 {(Array.isArray(customers) ? customers : customers?.data || []).map((c) => (
@@ -731,25 +1078,31 @@ export default function POSPage() {
                           {item.variant || "Standard"}
                         </td>
                         <td className="py-3.5 px-3 text-center">
-                          <div className="inline-flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleUpdateQty(idx, -1)}
-                              className="w-6 h-6 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-800 flex items-center justify-center font-bold text-xs transition cursor-pointer"
-                            >
-                              -
-                            </button>
-                            <span className="font-semibold text-xs text-slate-900 w-4 text-center">
+                          {isEditMode ? (
+                            <span className="font-bold text-xs text-slate-800 bg-slate-100 px-2.5 py-1 rounded-md inline-block">
                               {item.quantity}
                             </span>
-                            <button
-                              type="button"
-                              onClick={() => handleUpdateQty(idx, 1)}
-                              className="w-6 h-6 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-800 flex items-center justify-center font-bold text-xs transition cursor-pointer"
-                            >
-                              +
-                            </button>
-                          </div>
+                          ) : (
+                            <div className="inline-flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateQty(idx, -1)}
+                                className="w-6 h-6 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-800 flex items-center justify-center font-bold text-xs transition cursor-pointer"
+                              >
+                                -
+                              </button>
+                              <span className="font-semibold text-xs text-slate-900 w-4 text-center">
+                                {item.quantity}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateQty(idx, 1)}
+                                className="w-6 h-6 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-800 flex items-center justify-center font-bold text-xs transition cursor-pointer"
+                              >
+                                +
+                              </button>
+                            </div>
+                          )}
                         </td>
                         <td className="py-3.5 px-3 text-slate-400">-</td>
                         <td className="py-3.5 px-3 font-medium text-slate-800">
@@ -759,14 +1112,24 @@ export default function POSPage() {
                           ₹ {item.sale_price * item.quantity}
                         </td>
                         <td className="py-3.5 px-3 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveItem(idx)}
-                            className="p-1.5 rounded bg-rose-100 hover:bg-rose-200 text-rose-600 transition cursor-pointer inline-flex items-center justify-center"
-                            title="Remove item"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {isEditMode ? (
+                            <span
+                              className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-400 px-2 py-0.5 rounded bg-slate-100"
+                              title="Product lines cannot be modified or removed in edit mode"
+                            >
+                              <Lock className="w-3 h-3 text-slate-400" />
+                              Locked
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveItem(idx)}
+                              className="p-1.5 rounded bg-rose-100 hover:bg-rose-200 text-rose-600 transition cursor-pointer inline-flex items-center justify-center"
+                              title="Remove item"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))
@@ -787,13 +1150,26 @@ export default function POSPage() {
                       </td>
                     </tr>
                     <tr>
-                      <td className="p-3 font-semibold text-slate-700">Discount (Amount)</td>
+                      <td className="p-3 font-semibold text-slate-700">
+                        <div className="flex items-center gap-1.5">
+                          <span>Discount (Amount)</span>
+                          {isEditMode && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">
+                              Editable
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="p-2 text-right">
                         <input
                           type="number"
                           value={discount}
                           onChange={(e) => setDiscount(e.target.value)}
-                          className="w-28 bg-white border border-slate-200 rounded p-1.5 text-xs text-right font-semibold text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          placeholder="0"
+                          className={`w-28 bg-white border rounded p-1.5 text-xs text-right font-semibold text-slate-900 focus:outline-none ${isEditMode
+                            ? "border-emerald-500 ring-2 ring-emerald-200"
+                            : "border-slate-200 focus:ring-1 focus:ring-emerald-500"
+                            }`}
                         />
                       </td>
                     </tr>
@@ -802,9 +1178,13 @@ export default function POSPage() {
                       <td className="p-2 text-right">
                         <input
                           type="number"
+                          disabled={isEditMode}
                           value={gst}
                           onChange={(e) => setGst(e.target.value)}
-                          className="w-28 bg-white border border-slate-200 rounded p-1.5 text-xs text-right font-semibold text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          className={`w-28 border rounded p-1.5 text-xs text-right font-semibold ${isEditMode
+                            ? "bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed"
+                            : "bg-white border-slate-200 text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                            }`}
                         />
                       </td>
                     </tr>
@@ -816,12 +1196,23 @@ export default function POSPage() {
                     </tr>
                     <tr>
                       <td colSpan={2} className="p-3 space-y-1">
-                        <label className="block font-semibold text-slate-700">Notes</label>
+                        <div className="flex items-center justify-between">
+                          <label className="block font-semibold text-slate-700">Notes</label>
+                          {isEditMode && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">
+                              Editable
+                            </span>
+                          )}
+                        </div>
                         <textarea
                           rows={2}
                           value={notes}
                           onChange={(e) => setNotes(e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded p-2 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 resize-none"
+                          placeholder="Add notes / delivery comment..."
+                          className={`w-full bg-white border rounded p-2 text-xs text-slate-800 focus:outline-none resize-none ${isEditMode
+                            ? "border-emerald-500 ring-2 ring-emerald-200"
+                            : "border-slate-200 focus:ring-1 focus:ring-emerald-500"
+                            }`}
                         />
                       </td>
                     </tr>
@@ -842,8 +1233,11 @@ export default function POSPage() {
                 <button
                   type="button"
                   onClick={handleEmptyCart}
-                  disabled={cart.length === 0}
-                  className="px-4 py-2 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold transition cursor-pointer"
+                  disabled={isEditMode || cart.length === 0}
+                  className={`px-4 py-2 rounded-lg text-xs font-semibold transition ${isEditMode
+                    ? "bg-slate-100 text-slate-400 cursor-not-allowed opacity-50"
+                    : "bg-rose-100 hover:bg-rose-200 text-rose-700 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    }`}
                 >
                   Empty Cart
                 </button>
@@ -852,9 +1246,16 @@ export default function POSPage() {
                   type="button"
                   onClick={handleOpenPayModal}
                   disabled={cart.length === 0}
-                  className="px-6 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold shadow-xs transition cursor-pointer"
+                  className="px-6 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold shadow-xs transition cursor-pointer flex items-center gap-1.5"
                 >
-                  PAY
+                  {isEditMode ? (
+                    <>
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>UPDATE ORDER</span>
+                    </>
+                  ) : (
+                    <span>PAY</span>
+                  )}
                 </button>
               </div>
             </div>
@@ -876,8 +1277,28 @@ export default function POSPage() {
           onClose={() => setIsPayModalOpen(false)}
           cartData={payModalData}
           onCompletePayment={handleCompletePayment}
+          isEditMode={isEditMode}
         />
       </div>
     </AppLayout>
+  );
+}
+
+export default function POSPage() {
+  return (
+    <Suspense
+      fallback={
+        <AppLayout>
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="flex items-center gap-2 text-slate-500 text-sm font-medium">
+              <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+              <span>Loading POS...</span>
+            </div>
+          </div>
+        </AppLayout>
+      }
+    >
+      <POSContent />
+    </Suspense>
   );
 }

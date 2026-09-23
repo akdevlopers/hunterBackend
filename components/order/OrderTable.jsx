@@ -308,14 +308,12 @@ export function OrderTable({
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50/90 border-y border-slate-200 text-xs font-bold text-slate-800 uppercase tracking-wider">
-                    <th className="py-3 px-4 w-[15%]">ORDER ID</th>
-                    <th className="py-3 px-4 w-[12%]">DATE</th>
-                    <th className="py-3 px-4 w-[22%]">CUSTOMER INFO</th>
-                    <th className="py-3 px-3 w-[10%]">FINAL AMOUNT</th>
-                    <th className="py-3 px-3 w-[10%]">PAID AMOUNT</th>
-                    <th className="py-3 px-3 w-[9%]">PAYMENT TYPE</th>
-                    <th className="py-3 px-4 w-[10%]">ORDER STATUS</th>
-                    <th className="py-3 px-4 w-[12%] text-center">ACTION</th>
+                    <th className="py-3 px-4 w-[16%]">ORDER ID</th>
+                    <th className="py-3 px-4 w-[28%]">CUSTOMER INFO</th>
+                    <th className="py-3 px-3 w-[12%]">PAID AMOUNT</th>
+                    <th className="py-3 px-3 w-[12%]">PAYMENT TYPE</th>
+                    <th className="py-3 px-4 w-[14%]">ORDER STATUS</th>
+                    <th className="py-3 px-4 w-[18%] text-center">ACTION</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
@@ -324,9 +322,6 @@ export function OrderTable({
                       <tr key={idx} className="animate-pulse">
                         <td className="py-4 px-4">
                           <div className="h-6 bg-slate-200 rounded w-24"></div>
-                        </td>
-                        <td className="py-4 px-4">
-                          <div className="h-4 bg-slate-200 rounded w-28"></div>
                         </td>
                         <td className="py-4 px-4 space-y-1.5">
                           <div className="h-4 bg-slate-200 rounded w-32"></div>
@@ -339,9 +334,6 @@ export function OrderTable({
                         <td className="py-4 px-3">
                           <div className="h-4 bg-slate-200 rounded w-16"></div>
                         </td>
-                        <td className="py-4 px-3">
-                          <div className="h-5 bg-slate-200 rounded w-16"></div>
-                        </td>
                         <td className="py-4 px-4">
                           <div className="h-8 bg-slate-200 rounded w-28"></div>
                         </td>
@@ -352,7 +344,7 @@ export function OrderTable({
                     ))
                   ) : ordersList.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-12 text-center text-slate-400 font-medium">
+                      <td colSpan={6} className="py-12 text-center text-slate-400 font-medium">
                         No matching orders found.
                       </td>
                     </tr>
@@ -364,24 +356,22 @@ export function OrderTable({
 
                       return (
                         <tr key={order.id} className="hover:bg-slate-50/60 transition-colors">
-                          {/* 1. ORDER ID */}
-                          <td className="py-4 px-4 align-top font-mono text-xs font-bold text-slate-900 whitespace-nowrap">
+                          {/* 1. ORDER ID & DATE */}
+                          <td className="py-4 px-4 align-top">
                             <button
                               type="button"
                               onClick={() => onPreviewOrder(order)}
-                              className="hover:text-emerald-600 transition cursor-pointer text-left"
+                              className="font-mono text-xs font-bold text-slate-900 hover:text-emerald-600 transition cursor-pointer text-left block"
                               title="View Order Preview"
                             >
                               #{order.product_order_id || order.order_id || order.id}
                             </button>
+                            <p className="text-[11px] text-slate-500 font-normal mt-0.5 whitespace-nowrap">
+                              {order.date || order.order_date || order.created_at}
+                            </p>
                           </td>
 
-                          {/* 2. DATE */}
-                          <td className="py-4 px-4 align-top font-medium text-slate-600 whitespace-nowrap">
-                            {order.date || order.order_date || order.created_at}
-                          </td>
-
-                          {/* 3. CUSTOMER INFO */}
+                          {/* 2. CUSTOMER INFO */}
                           <td className="py-4 px-4 align-top">
                             <div className="space-y-0.5 text-xs">
                               <p className="font-bold text-slate-900">
@@ -410,11 +400,6 @@ export function OrderTable({
                                 </p>
                               )}
                             </div>
-                          </td>
-
-                          {/* 4. FINAL AMOUNT */}
-                          <td className="py-4 px-3 align-top font-bold text-slate-900 whitespace-nowrap">
-                            ₹ {Number(order.final_price ?? order.total_amount ?? order.price ?? 0).toFixed(2)}
                           </td>
 
                           {/* 5. PAID AMOUNT */}

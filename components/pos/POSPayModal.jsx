@@ -11,6 +11,7 @@ export function POSPayModal({
   onClose,
   cartData,
   onCompletePayment,
+  isEditMode = false,
 }) {
   const [step, setStep] = useState("preview"); // 'preview' | 'receipt'
   const [selectedPayment, setSelectedPayment] = useState("cash"); // 'cash' | 'online'
@@ -39,30 +40,38 @@ export function POSPayModal({
     setIsSubmitting(true);
     setErrorMessage("");
 
-    const payload = {
-      customer_id: Number(customer_id) || 0,
-      discount: Number(discount) || 0,
-      gst: Number(gst) || 0,
-      paymentNotes: selectedPayment, // "cash" or "online"
-      notes: notes || "Walk-in customer order",
-      items: items.map((item) => ({
-        id: Number(item.product_id || item.id),
-        variant_id: Number(item.variant_id) || 0,
-        name: item.name || "Product",
-        orignal_price: Number(item.sale_price || item.price) || 0,
-        quantity: Number(item.quantity) || 1,
-      })),
-    };
+    let res;
+    if (isEditMode) {
+      res = await api.updateOrder({
+        id: pos_id,
+        note: notes || "",
+        discount: Number(discount) || 0,
+      });
+    } else {
+      const payload = {
+        customer_id: Number(customer_id) || 0,
+        discount: Number(discount) || 0,
+        gst: Number(gst) || 0,
+        paymentNotes: selectedPayment, // "cash" or "online"
+        delivery_comment: notes || " ",
+        items: items.map((item) => ({
+          id: Number(item.product_id || item.id),
+          variant_id: Number(item.variant_id) || 0,
+          name: item.name || "Product",
+          orignal_price: Number(item.sale_price || item.price) || 0,
+          quantity: Number(item.quantity) || 1,
+        })),
+      };
+      res = await api.createPosOrder(payload);
+    }
 
-    const res = await api.createPosOrder(payload);
-
-    if (res && (res.status === "success" || res.code === 200 || res.success || res.order_id || res.id)) {
+    if (res && (res.status === "success" || res.code === 200 || res.success || res.order_id || res.id || res.status === true)) {
       const orderId = res.order_id || res.id || res.data?.order_id || pos_id;
       setCreatedOrderId(orderId);
       onCompletePayment(selectedPayment === "cash" ? "Cash" : "Online", res);
       setStep("receipt");
     } else {
-      setErrorMessage(res?.message || res?.error || "Failed to complete POS order payment. Please try again.");
+      setErrorMessage(res?.message || res?.error || "Failed to process order. Please try again.");
     }
     setIsSubmitting(false);
   };
@@ -157,7 +166,14 @@ export function POSPayModal({
           {/* Header Info */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-start pb-4 border-b border-slate-100">
             <div className="space-y-1">
-              <h2 className="text-base font-bold text-slate-900">#{activePosId}</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-slate-900">#{activePosId}</h2>
+                {isEditMode && (
+                  <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-300">
+                    Edit Mode
+                  </span>
+                )}
+              </div>
               <p className="text-slate-600">
                 <span className="font-semibold text-slate-800">Date:</span> {date}
               </p>
@@ -314,10 +330,10 @@ export function POSPayModal({
                 {isSubmitting ? (
                   <>
                     <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Submitting Order...</span>
+                    <span>{isEditMode ? "Updating Order..." : "Submitting Order..."}</span>
                   </>
                 ) : (
-                  <span>Submit Order & Pay Now</span>
+                  <span>{isEditMode ? "Confirm & Update Order" : "Submit Order & Pay Now"}</span>
                 )}
               </button>
             </div>
@@ -328,7 +344,11 @@ export function POSPayModal({
         <div className="space-y-4 text-slate-800 text-xs font-sans">
           <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-semibold flex items-center gap-2">
             <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>Payment completed successfully! Bill No: {activePosId}</span>
+            <span>
+              {isEditMode
+                ? `Order #${activePosId} updated successfully!`
+                : `Payment completed successfully! Bill No: ${activePosId}`}
+            </span>
           </div>
 
           {/* Printable Receipt Layout Container */}

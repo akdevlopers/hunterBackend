@@ -11,6 +11,7 @@ export function OrderPreviewModal({ isOpen, onClose, order }) {
   const [returningId, setReturningId] = useState(null);
   const [returnMessage, setReturnMessage] = useState("");
   const [selectedImage, setSelectedImage] = useState(null);
+  const [hoveredImage, setHoveredImage] = useState(null);
 
   useEffect(() => {
     if (isOpen && order?.id) {
@@ -24,6 +25,7 @@ export function OrderPreviewModal({ isOpen, onClose, order }) {
     } else {
       setDetails(null);
       setSelectedImage(null);
+      setHoveredImage(null);
     }
   }, [isOpen, order]);
 
@@ -186,16 +188,28 @@ export function OrderPreviewModal({ isOpen, onClose, order }) {
         tabIndex={0}
         onClick={(e) => {
           e.stopPropagation();
+          setHoveredImage(null);
           setSelectedImage({ url: fullUrl, title: altText || "Product Image" });
         }}
+        onMouseEnter={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          setHoveredImage({
+            url: fullUrl,
+            title: altText || "Product Image",
+            x: rect.left + rect.width / 2,
+            y: rect.top,
+          });
+        }}
+        onMouseLeave={() => setHoveredImage(null)}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.stopPropagation();
+            setHoveredImage(null);
             setSelectedImage({ url: fullUrl, title: altText || "Product Image" });
           }
         }}
         className={`${className} group relative rounded-lg overflow-hidden border border-slate-200 bg-slate-50 shadow-2xs shrink-0 flex items-center justify-center cursor-pointer transition-all hover:scale-105 hover:border-emerald-500 hover:shadow-md select-none`}
-        title="Click to view full image"
+        title="Hover to preview, click to open full view"
       >
         <img
           src={fullUrl}
@@ -264,8 +278,7 @@ export function OrderPreviewModal({ isOpen, onClose, order }) {
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
                         <tr className="bg-slate-50/80 text-slate-800 font-bold uppercase tracking-wider border-b border-slate-100">
-                          <th className="py-3 px-4 w-2/5">ITEM</th>
-                          <th className="py-3 px-4 text-center">ITEM IMAGE</th>
+                          <th className="py-3 px-4">ITEM</th>
                           <th className="py-3 px-4 text-center w-24">QUANTITY</th>
                           <th className="py-3 px-4 text-right w-32">TOTAL</th>
                           <th className="py-3 px-4 text-center w-28">ACTION</th>
@@ -274,51 +287,50 @@ export function OrderPreviewModal({ isOpen, onClose, order }) {
                       <tbody className="divide-y divide-slate-100 bg-white text-xs text-slate-700">
                         {items.map((item, idx) => {
                           const isReturningThis = returningId === item.id;
+                          const itemImg = item.cover_image_url || item.image || item.image_url || item.product_image || item.cover_image_path || item.cover_image;
+                          const variantVal = item.variant_name || item.variant || item.product_variant_name;
+                          const skuVal = item.sku || item.product_sku || item.variant_sku;
 
                           return (
                             <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                              {/* Item Name & Details */}
-                              <td className="py-4 px-4 align-top">
-                                <div className="space-y-1.5">
-                                  <p className="font-semibold text-emerald-700 text-xs">
-                                    {item.name || item.title || item.product_name || "Product"}
-                                  </p>
-                                  <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                                    {(item.variant_name || item.variant || item.product_variant_name) && (
-                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-100 text-indigo-700 font-semibold text-[10px]">
-                                        <span className="text-indigo-400 font-normal">Variant:</span>
-                                        <span>{item.variant_name || item.variant || item.product_variant_name}</span>
-                                      </span>
-                                    )}
-                                    {(item.sku || item.product_sku || item.variant_sku) && (
-                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-700 font-mono font-bold text-[10px]">
-                                        <span className="text-slate-400 font-sans font-normal">SKU:</span>
-                                        <span>{item.sku || item.product_sku || item.variant_sku}</span>
-                                      </span>
-                                    )}
+                              {/* Item Details with Image, Name & Variant */}
+                              <td className="py-3.5 px-4 align-top">
+                                <div className="flex items-start gap-3.5">
+                                  {renderImage(itemImg, item.name, "w-20 h-20")}
+                                  <div className="flex-1 min-w-0 space-y-1.5 pt-0.5">
+                                    <p className="font-semibold text-emerald-700 text-xs sm:text-[13px] leading-snug">
+                                      {item.name || item.title || item.product_name || "Product"}
+                                    </p>
+                                    <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                                      {variantVal && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-100 text-indigo-700 font-semibold text-[10px]">
+                                          <span className="text-indigo-400 font-normal">Variant:</span>
+                                          <span>{variantVal}</span>
+                                        </span>
+                                      )}
+                                      {skuVal && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-slate-700 font-mono font-bold text-[10px]">
+                                          <span className="text-slate-400 font-sans font-normal">SKU:</span>
+                                          <span>{skuVal}</span>
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
                               </td>
 
-                              {/* Item Image with clean placeholder */}
-                              <td className="py-4 px-4 align-top text-center">
-                                <div className="inline-block">
-                                  {renderImage(item.cover_image_url, item.name, "w-16 h-16")}
-                                </div>
-                              </td>
-
                               {/* Quantity */}
-                              <td className="py-4 px-4 align-top text-center font-medium text-slate-800">
+                              <td className="py-3.5 px-4 align-middle text-center font-medium text-slate-800">
                                 {item.qty || item.quantity || 1}
                               </td>
 
                               {/* Total Price */}
-                              <td className="py-4 px-4 align-top text-right font-medium text-slate-800 whitespace-nowrap">
+                              <td className="py-3.5 px-4 align-middle text-right font-semibold text-slate-900 whitespace-nowrap">
                                 ₹{Number(item.final_price || item.total_orignal_price || item.orignal_price || item.total || 0).toFixed(2)}
                               </td>
 
                               {/* Return Action */}
-                              <td className="py-4 px-4 align-top text-center">
+                              <td className="py-3.5 px-4 align-middle text-center">
                                 {isItemReturned(item) ? (
                                   <span
                                     className="inline-flex items-center px-2.5 py-1 rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-[11px] font-bold select-none cursor-default"
@@ -349,6 +361,7 @@ export function OrderPreviewModal({ isOpen, onClose, order }) {
                   <div className="block sm:hidden space-y-3">
                     {items.map((item, idx) => {
                       const isReturningThis = returningId === (item.id || item.product_id || item.variant_id);
+                      const itemImg = item.cover_image_url || item.image || item.image_url || item.product_image || item.cover_image_path || item.cover_image;
                       const variantVal = item.variant_name || item.variant || item.product_variant_name;
                       const skuVal = item.sku || item.product_sku || item.variant_sku;
                       const itemReturned = isItemReturned(item);
@@ -356,9 +369,9 @@ export function OrderPreviewModal({ isOpen, onClose, order }) {
                       return (
                         <div key={idx} className="p-3 border border-slate-200 rounded-xl bg-slate-50/50 space-y-2 text-xs">
                           <div className="flex gap-3">
-                            {renderImage(item.cover_image_url, item.name, "w-16 h-16")}
+                            {renderImage(itemImg, item.name, "w-20 h-20")}
                             <div className="flex-1 min-w-0 space-y-1">
-                              <p className="font-semibold text-slate-900 line-clamp-2">
+                              <p className="font-semibold text-slate-900 line-clamp-2 text-xs">
                                 {item.name || item.title || item.product_name || "Product"}
                               </p>
                               <div className="flex flex-wrap items-center gap-1">
