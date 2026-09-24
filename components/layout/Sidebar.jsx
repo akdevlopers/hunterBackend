@@ -96,6 +96,10 @@ const NAV_ITEMS = [
             href: "/order/profit-loss",
             protectedType: "online_sale_profilt_loss",
           },
+          {
+            name: "Sale Report",
+            href: "/order/sale-report",
+          },
         ],
       },
       {
@@ -144,6 +148,10 @@ const NAV_ITEMS = [
           {
             name: "Stock Report",
             href: "/stock-report-hunter",
+          },
+          {
+            name: "Sale Report",
+            href: "/sale-report",
           },
           {
             name: "Product Return",
@@ -317,9 +325,9 @@ export function Sidebar({ isMobileOpen, setIsMobileOpen }) {
 
                   const activeChild = hasChildren
                     ? item.children.find((c) => pathname === c.href) ||
-                      item.children
-                        .filter((c) => c.href !== "/" && pathname.startsWith(c.href + "/"))
-                        .sort((a, b) => b.href.length - a.href.length)[0] || null
+                    item.children
+                      .filter((c) => c.href !== "/" && pathname.startsWith(c.href + "/"))
+                      .sort((a, b) => b.href.length - a.href.length)[0] || null
                     : null;
 
                   const isItemActive = hasChildren

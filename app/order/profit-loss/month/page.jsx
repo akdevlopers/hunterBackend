@@ -76,7 +76,15 @@ function ProfitLossMonthContent() {
       const mNum = parseInt(m, 10);
       setCurrentYear(y);
       setCurrentMonth(mNum.toString());
-      router.push(`/online_sale_profit_loss_month?year=${y}&month=${mNum}`);
+      router.push(`/order/profit-loss/month?year=${y}&month=${mNum}`);
+    }
+  };
+
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      router.back();
+    } else {
+      router.push(`/order/profit-loss?year=${currentYear}`);
     }
   };
 
@@ -88,12 +96,14 @@ function ProfitLossMonthContent() {
         {/* Header Breadcrumbs */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Link
-              href="/profit-loss"
+            <button
+              type="button"
+              onClick={handleBack}
               className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
+              title="Go Back"
             >
               <ArrowLeft className="w-4 h-4" />
-            </Link>
+            </button>
             <div>
               <h1 className="text-xl font-bold text-slate-900">
                 Daily Profit &amp; Loss Breakdown
@@ -103,7 +113,11 @@ function ProfitLossMonthContent() {
                   Home
                 </Link>
                 <span>&gt;</span>
-                <Link href="/profit-loss" className="text-emerald-600 hover:underline">
+                <Link href="/order" className="text-emerald-600 hover:underline">
+                  Order
+                </Link>
+                <span>&gt;</span>
+                <Link href={`/order/profit-loss?year=${currentYear}`} className="text-emerald-600 hover:underline">
                   Profit Loss
                 </Link>
                 <span>&gt;</span>

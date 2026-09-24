@@ -22,13 +22,8 @@ export function TopSalesWidget({ title, type = "top_selling", data = [] }) {
 
   const getProductImage = (item) => {
     if (item.cover_image_url) return item.cover_image_url;
-    if (item.cover_image_path) {
-      return item.cover_image_path.startsWith("http")
-        ? item.cover_image_path
-        : `https://meetay.com/${item.cover_image_path}`;
-    }
-    if (item.image) return item.image;
-    if (item.logo) return item.logo;
+
+
     return null;
   };
 
@@ -121,11 +116,10 @@ export function TopSalesWidget({ title, type = "top_selling", data = [] }) {
                     {formatCurrency(price)}
                   </p>
                   <span
-                    className={`text-[10px] font-medium flex items-center justify-end gap-0.5 ${
-                      isLatest ? "text-indigo-600 dark:text-indigo-400" : "text-amber-600 dark:text-amber-400"
-                    }`}
+                    className={`text-[10px] font-medium flex items-center justify-end gap-0.5 ${isLatest ? "text-indigo-600 dark:text-indigo-400" : "text-amber-600 dark:text-amber-400"
+                      }`}
                   >
-                   
+
                   </span>
                 </div>
               </Link>

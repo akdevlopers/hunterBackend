@@ -2,12 +2,13 @@
 
 import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { ArrowLeft, TrendingUp, Loader2 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { api } from "@/lib/api";
 
 function ProfitLossMonthContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const initialYear = Number(searchParams.get("year")) || 2026;
   const initialMonth = Number(searchParams.get("month")) || 9;
@@ -68,6 +69,14 @@ function ProfitLossMonthContent() {
     }
   };
 
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      router.back();
+    } else {
+      router.push(`/profit-loss?year=${year}`);
+    }
+  };
+
   const daysList = monthData.data || [];
 
   return (
@@ -76,12 +85,14 @@ function ProfitLossMonthContent() {
         {/* Header Breadcrumbs */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Link
-              href="/profit-loss"
-              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+            <button
+              type="button"
+              onClick={handleBack}
+              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
+              title="Go Back"
             >
               <ArrowLeft className="w-4 h-4" />
-            </Link>
+            </button>
             <div>
               <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-emerald-600" />

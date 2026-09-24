@@ -69,10 +69,34 @@ export default function PrintFileReceiptPage() {
     0
   );
 
-  const subTotal = orderObj.product_price ?? orderObj.sub_total ?? 0;
-  const discount = orderObj.coupon_price ?? orderObj.discount ?? 0;
-  const tax = orderObj.tax_price ?? orderObj.tax ?? 0;
-  const finalPrice = orderObj.final_price ?? orderObj.paidAmount ?? orderObj.paid_amount ?? 0;
+  const subTotal =
+    orderObj.product_price ??
+    orderObj.sub_total ??
+    orderObj.subtotal ??
+    orderObj.total_amount ??
+    items.reduce((sum, it) => {
+      const q = Number(it.qty || it.quantity || 1) || 1;
+      const p = Number(
+        it.orignal_price ??
+        it.original_price ??
+        it.sale_price ??
+        it.price ??
+        it.product_price ??
+        it.final_price ??
+        0
+      ) || 0;
+      return sum + (Number(it.total_orignal_price ?? it.total_original_price ?? it.total ?? (p * q)) || 0);
+    }, 0);
+
+  const discount = Number(orderObj.coupon_price ?? orderObj.discount ?? orderObj.discount_amount ?? 0) || 0;
+  const tax = Number(orderObj.tax_price ?? orderObj.tax ?? orderObj.tax_amount ?? orderObj.gst ?? 0) || 0;
+  const finalPrice =
+    orderObj.final_price ??
+    orderObj.paidAmount ??
+    orderObj.paid_amount ??
+    orderObj.total ??
+    orderObj.total_amount ??
+    (Number(subTotal) - discount + tax);
   const paymentMode = (orderObj.customer_payment_type || orderObj.payment_type || "CASH").toUpperCase();
 
   const now = orderObj.order_date ? new Date(orderObj.order_date) : new Date();
@@ -148,7 +172,7 @@ export default function PrintFileReceiptPage() {
         {/* Bill No */}
         <div className="pt-1 pb-2">
           <span className="font-extrabold text-xs">
-            Bill No: {orderObj.product_order_id || orderObj.id || orderId}
+            Bill No: {orderObj.product_order_id || orderObj.order_id || orderObj.id || orderId}
           </span>
         </div>
 
@@ -165,11 +189,46 @@ export default function PrintFileReceiptPage() {
             </thead>
             <tbody className="divide-y divide-slate-200">
               {items.map((item, idx) => {
-                const unitPrice = item.final_price || item.sale_price || item.product_price || item.price || 0;
-                const qty = item.qty || item.quantity || 1;
-                const totalAmount = item.total_orignal_price || item.total || (unitPrice * qty);
+                const qty = Number(item.qty ?? item.quantity ?? item.products_count ?? 1) || 1;
+
+                const rawUnitPrice =
+                  item.orignal_price ??
+                  item.original_price ??
+                  item.sale_price ??
+                  item.price ??
+                  item.product_price ??
+                  item.rate ??
+                  item.unit_price ??
+                  item.final_price ??
+                  item.mrp ??
+                  0;
+
+                const rawTotalAmount =
+                  item.total_orignal_price ??
+                  item.total_original_price ??
+                  item.total_price ??
+                  item.total ??
+                  item.total_amount ??
+                  item.final_price ??
+                  0;
+
+                let unitPrice = Number(rawUnitPrice) || 0;
+                let totalAmount = Number(rawTotalAmount) || 0;
+
+                if (unitPrice > 0 && totalAmount === 0) {
+                  totalAmount = unitPrice * qty;
+                } else if (totalAmount > 0 && unitPrice === 0) {
+                  unitPrice = totalAmount / qty;
+                } else if (unitPrice === 0 && totalAmount === 0) {
+                  const anyPrice = Number(item.mrp ?? item.paid_amount ?? item.sub_total ?? 0) || 0;
+                  if (anyPrice > 0) {
+                    unitPrice = anyPrice / qty;
+                    totalAmount = anyPrice;
+                  }
+                }
+
                 const variantName = item.variant_name || item.variant || item.product_variant_name;
-                const skuCode = item.sku || item.product_sku;
+                const skuCode = item.sku || item.product_sku || item.variant_sku;
 
                 return (
                   <tr key={idx}>

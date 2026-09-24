@@ -21,16 +21,9 @@ export default function PosOrderListPage() {
   const todayStr = new Date().toISOString().slice(0, 10);
 
   const [posResponse, setPosResponse] = useState({
-    page: 1,
-    limit: 10,
-    total: 0,
-    totalPages: 1,
     summary: { cash_sale: 0, online_sale: 0, return: 0, total: 0 },
     data: [],
   });
-
-  const [page, setPage] = useState(1);
-  const [limit] = useState(10);
   const [loading, setLoading] = useState(true);
   const [previewOrder, setPreviewOrder] = useState(null);
 
@@ -38,11 +31,9 @@ export default function PosOrderListPage() {
   const [fromDate, setFromDate] = useState(todayStr);
   const [toDate, setToDate] = useState(todayStr);
 
-  const loadData = async (targetPage = page) => {
+  const loadData = async () => {
     setLoading(true);
     const res = await api.getPosOrders({
-      page: targetPage,
-      limit,
       fromDate,
       toDate,
     });
@@ -50,10 +41,6 @@ export default function PosOrderListPage() {
       setPosResponse(res);
     } else {
       setPosResponse({
-        page: 1,
-        limit: 10,
-        total: 0,
-        totalPages: 1,
         summary: { cash_sale: 0, online_sale: 0, return: 0, total: 0 },
         data: [],
       });
@@ -62,13 +49,12 @@ export default function PosOrderListPage() {
   };
 
   useEffect(() => {
-    loadData(page);
-  }, [page, fromDate, toDate]);
+    loadData();
+  }, [fromDate, toDate]);
 
   const handleSearchSubmit = (e) => {
     if (e) e.preventDefault();
-    setPage(1);
-    loadData(1);
+    loadData();
   };
 
   const handleDeleteOrder = async (orderId) => {
@@ -78,7 +64,7 @@ export default function PosOrderListPage() {
       )
     ) {
       await api.deletePosOrder(orderId, fromDate, toDate);
-      loadData(page);
+      loadData();
     }
   };
 
@@ -87,7 +73,7 @@ export default function PosOrderListPage() {
     if (typeof window !== "undefined") {
       try {
         sessionStorage.setItem("pos_edit_order", JSON.stringify(order));
-      } catch (e) {}
+      } catch (e) { }
     }
     router.push(`/pos?edit_order_id=${orderId}`);
   };
@@ -109,8 +95,6 @@ export default function PosOrderListPage() {
     total: 0,
   };
   const orders = posResponse.data || [];
-  const total = posResponse.total || 0;
-  const totalPages = (posResponse.totalPages ?? Math.ceil(total / limit)) || 1;
 
   return (
     <AppLayout>
@@ -142,7 +126,7 @@ export default function PosOrderListPage() {
                     <th className="py-3 px-3">OrderId</th>
                     <th className="py-3 px-3">Date</th>
                     <th className="py-3 px-3">Price</th>
-                    <th className="py-3 px-3">Payment Type / Notes</th>
+                    <th className="py-3 px-3">Notes</th>
                     <th className="py-3 px-3 text-right">Action</th>
                   </tr>
                 </thead>
@@ -187,8 +171,7 @@ export default function PosOrderListPage() {
                         `${order.id}`;
                       const orderPrice =
                         order.final_price ?? order.price ?? order.total ?? 0;
-                      const paymentInfo =
-                        `${order.customer_payment_type || order.payment_type || "Cash"} / ${order.delivery_comment}`;
+                      const paymentInfo = order.delivery_comment ?? "";
 
                       return (
                         <tr
@@ -196,7 +179,7 @@ export default function PosOrderListPage() {
                           className="hover:bg-slate-50/60 transition"
                         >
                           <td className="py-3 px-3 text-center font-semibold text-slate-500">
-                            {order.sl_no || (page - 1) * limit + idx + 1}
+                            {order.sl_no || idx + 1}
                           </td>
                           <td className="py-3 px-3 font-bold text-slate-900 font-mono">
                             #{orderCode}
@@ -204,8 +187,14 @@ export default function PosOrderListPage() {
                           <td className="py-3 px-3 text-slate-600 whitespace-nowrap font-medium">
                             {order.date || order.order_date}
                           </td>
-                          <td className="py-3 px-3 font-semibold text-slate-900">
-                            ₹ {Number(orderPrice).toFixed(2)}
+                          <td className="py-3 px-3">
+                            <div className="font-semibold text-slate-900">
+                              ₹ {Number(orderPrice).toFixed(2)}
+                            </div>
+
+                            <div className="text-xs text-slate-500 mt-1">
+                              ({order.customer_payment_type || "Cash"})
+                            </div>
                           </td>
                           <td className="py-3 px-3 text-slate-600 font-mono text-[11px]">
                             {paymentInfo}
@@ -260,37 +249,6 @@ export default function PosOrderListPage() {
                 </tbody>
               </table>
             </div>
-
-            {/* Pagination Controls */}
-            {total > 0 && (
-              <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs text-slate-500">
-                <span>
-                  Showing {(page - 1) * limit + 1} to{" "}
-                  {Math.min(page * limit, total)} of {total} entries
-                </span>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setPage((p) => Math.max(p - 1, 1))}
-                    disabled={page <= 1}
-                    className="px-2.5 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
-                  >
-                    Previous
-                  </button>
-                  <span className="px-2 font-semibold text-slate-800">
-                    {page} / {totalPages}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
-                    disabled={page >= totalPages}
-                    className="px-2.5 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Right Column (4 cols): Date Filter & Summary Cards */}

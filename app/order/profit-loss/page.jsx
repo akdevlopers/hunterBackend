@@ -163,7 +163,7 @@ function ProfitLossContent() {
                         </td>
                         <td className="py-3.5 px-4 text-center">
                           <Link
-                            href={`/online_sale_profit_loss_month?year=${activeYear}&month=${row.month_number || idx + 1}`}
+                            href={`/order/profit-loss/month?year=${activeYear}&month=${row.month_number || idx + 1}`}
                             className="inline-flex items-center gap-1 text-emerald-600 hover:text-emerald-800 hover:underline font-bold"
                           >
                             <span>view</span>
