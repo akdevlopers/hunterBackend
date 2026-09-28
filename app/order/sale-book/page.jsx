@@ -121,6 +121,7 @@ export default function OnlineSaleBookPage() {
                     <th className="py-3 px-3">OrderId</th>
                     <th className="py-3 px-3">Date</th>
                     <th className="py-3 px-3">Total Amount</th>
+                    <th className="py-3 px-3">Paid Amount</th>
                     <th className="py-3 px-3">Payment Type</th>
                     <th className="py-3 px-3 text-center w-16">Action</th>
                   </tr>
@@ -134,6 +135,9 @@ export default function OnlineSaleBookPage() {
                         </td>
                         <td className="py-3 px-3">
                           <div className="h-4 bg-slate-200 rounded w-28"></div>
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="h-4 bg-slate-200 rounded w-24"></div>
                         </td>
                         <td className="py-3 px-3">
                           <div className="h-4 bg-slate-200 rounded w-24"></div>
@@ -170,13 +174,15 @@ export default function OnlineSaleBookPage() {
                         <td className="py-3 px-3 font-bold text-slate-900">
                           ₹ {Number(order.total_amount ?? order.product_price ?? order.final_price ?? 0).toFixed(2)}
                         </td>
+                        <td className="py-3 px-3 font-bold text-slate-900">
+                          ₹ {Number(order.paidAmount ?? 0).toFixed(2)}
+                        </td>
                         <td className="py-3 px-3">
                           <span
-                            className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
-                              order.payment_type === "Online" || order.raw_payment_type === "Razorpay"
+                            className={`px-2 py-0.5 rounded text-[11px] font-semibold ${order.payment_type === "Online" || order.raw_payment_type === "Razorpay"
                                 ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                                 : "bg-amber-50 text-amber-800 border border-amber-200"
-                            }`}
+                              }`}
                           >
                             {order.payment_type || "COD"}
                           </span>
