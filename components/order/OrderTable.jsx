@@ -57,11 +57,12 @@ export function OrderTable({
 
   // Response object or fallback array parsing
   const ordersList = ordersResponse?.data || orders || [];
-  const counts = ordersResponse?.counts || {
-    all: ordersList.length,
-    new: ordersList.filter((o) => o.delivered_status === 0).length,
-    completed: ordersList.filter((o) => o.delivered_status === 1).length,
-    remark: ordersList.filter((o) => o.delivered_status === 2).length,
+  const counts = {
+    all: ordersResponse?.counts?.all ?? ordersList.length,
+    new: ordersResponse?.counts?.new ?? ordersList.filter((o) => o.delivered_status === 0 || String(o.delivered_status) === "0").length,
+    completed: ordersResponse?.counts?.completed ?? ordersList.filter((o) => o.delivered_status === 1 || String(o.delivered_status) === "1").length,
+    remark: ordersResponse?.counts?.remark ?? ordersList.filter((o) => o.delivered_status === 2 || String(o.delivered_status) === "2").length,
+    markus: ordersResponse?.counts?.markus_delivery_list ?? ordersResponse?.counts?.markus_delivery ?? ordersResponse?.counts?.markus ?? ordersResponse?.counts?.["4"] ?? ordersList.filter((o) => o.delivered_status === 4 || String(o.delivered_status) === "4").length,
   };
 
   const total = ordersResponse?.total ?? ordersList.length;
@@ -97,7 +98,7 @@ export function OrderTable({
     const rows = ordersList
       .map((o) => {
         const cust = o.customer_info || o.customer || {};
-        return `"${o.product_order_id || o.id}","${o.order_date}","${cust.name || ""}","${cust.email || ""}","${cust.phone || cust.telephone || ""}","${(cust.address || "").replace(/"/g, '""')}","${o.final_price ?? o.price ?? 0}","${o.paid_amount ?? o.paidAmount ?? 0}","${o.payment_type}","${o.delivered_status_label || (o.delivered_status === 0 ? "New" : o.delivered_status === 1 ? "Completed" : "Remark")}"`;
+        return `"${o.product_order_id || o.id}","${o.order_date}","${cust.name || ""}","${cust.email || ""}","${cust.phone || cust.telephone || ""}","${(cust.address || "").replace(/"/g, '""')}","${o.final_price ?? o.price ?? 0}","${o.paid_amount ?? o.paidAmount ?? 0}","${o.payment_type}","${o.delivered_status_label || (Number(o.delivered_status) === 0 ? "New" : Number(o.delivered_status) === 1 ? "Completed" : Number(o.delivered_status) === 2 ? "Remark" : Number(o.delivered_status) === 4 ? "Markus Delivery List" : "New")}"`;
       })
       .join("\n");
 
@@ -188,6 +189,25 @@ export function OrderTable({
               String(activeTab) === "2" ? "bg-rose-100 text-rose-800" : "bg-rose-50 text-rose-700"
             }`}>
               {counts.remark}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleTabChange(4)}
+          className={`px-4 sm:px-5 py-2.5 sm:py-3 text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+            String(activeTab) === "4"
+              ? "bg-white border border-slate-200 border-b-white rounded-t-xl text-slate-900 shadow-xs"
+              : "text-emerald-600 hover:text-emerald-700 hover:bg-slate-50/80 rounded-t-xl"
+          }`}
+        >
+          <span>Markus Delivery List</span>
+          {counts.markus !== undefined && (
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+              String(activeTab) === "4" ? "bg-indigo-100 text-indigo-800" : "bg-indigo-50 text-indigo-700"
+            }`}>
+              {counts.markus}
             </span>
           )}
         </button>
@@ -438,6 +458,7 @@ export function OrderTable({
                                 <option value="0">New</option>
                                 <option value="1">Completed</option>
                                 <option value="2">Remark</option>
+                                <option value="4">Markus Delivery List</option>
                               </select>
 
                               {order.remark && (
@@ -542,10 +563,12 @@ export function OrderTable({
                               ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                               : order.delivered_status === 2 || String(order.delivered_status) === "2"
                               ? "bg-rose-50 text-rose-700 border border-rose-200"
+                              : order.delivered_status === 4 || String(order.delivered_status) === "4"
+                              ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
                               : "bg-amber-50 text-amber-700 border border-amber-200"
                           }`}
                         >
-                          {order.delivered_status_label || (order.delivered_status === 1 ? "Completed" : order.delivered_status === 2 ? "Remark" : "New")}
+                          {order.delivered_status_label || (Number(order.delivered_status) === 1 ? "Completed" : Number(order.delivered_status) === 2 ? "Remark" : Number(order.delivered_status) === 4 ? "Markus Delivery List" : "New")}
                         </span>
                       </div>
 
@@ -626,6 +649,7 @@ export function OrderTable({
                           <option value="0">Set New</option>
                           <option value="1">Set Completed</option>
                           <option value="2">Set Remark</option>
+                          <option value="4">Set Markus Delivery List</option>
                         </select>
 
                         <button
@@ -733,8 +757,16 @@ export function OrderTable({
                           )}
                           <span>Book Shiprocket</span>
                         </button>
-                        <span className="px-2 py-0.5 rounded text-[11px] bg-slate-100 font-medium text-slate-700">
-                          {order.delivered_status_label || (order.delivered_status === 0 ? "New" : "Completed")}
+                        <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${
+                          Number(order.delivered_status) === 1
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            : Number(order.delivered_status) === 2
+                            ? "bg-rose-50 text-rose-700 border border-rose-200"
+                            : Number(order.delivered_status) === 4
+                            ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                            : "bg-amber-50 text-amber-700 border border-amber-200"
+                        }`}>
+                          {order.delivered_status_label || (Number(order.delivered_status) === 1 ? "Completed" : Number(order.delivered_status) === 2 ? "Remark" : Number(order.delivered_status) === 4 ? "Markus Delivery List" : "New")}
                         </span>
                       </div>
                     </div>

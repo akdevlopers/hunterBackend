@@ -159,11 +159,13 @@ export function OrderPreviewModal({ isOpen, onClose, order }) {
   const paymentType = orderObj.payment_type_label || orderObj.payment_type || "COD";
   const orderStatusLabel =
     orderObj.delivered_status_label ||
-    (orderObj.delivered_status === 1
+    (Number(orderObj.delivered_status) === 1
       ? "Completed"
-      : orderObj.delivered_status === 2
+      : Number(orderObj.delivered_status) === 2
         ? "Remark"
-        : "New");
+        : Number(orderObj.delivered_status) === 4
+          ? "Markus Delivery List"
+          : "New");
   const paidAmount = orderObj.paid_amount ?? orderObj.paidAmount ?? orderObj.final_price ?? 0;
   const noteText =
     orderObj.delivery_comment || "";

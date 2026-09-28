@@ -245,11 +245,13 @@ export default function OrderViewPage() {
                   <span className="text-slate-500">Fulfillment Status:</span>
                   <span className="font-bold text-slate-900">
                     {orderObj.delivered_status_label ||
-                      (orderObj.delivered_status === 1
+                      (Number(orderObj.delivered_status) === 1
                         ? "Completed"
-                        : orderObj.delivered_status === 2
+                        : Number(orderObj.delivered_status) === 2
                           ? "Remark"
-                          : "New")}
+                          : Number(orderObj.delivered_status) === 4
+                            ? "Markus Delivery List"
+                            : "New")}
                   </span>
                 </div>
                 {orderObj.additional_note && (

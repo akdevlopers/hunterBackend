@@ -43,6 +43,7 @@ export default function PosSaleReportPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [collapsedDates, setCollapsedDates] = useState({});
+  const [collapsedCategories, setCollapsedCategories] = useState({});
 
   // Fetch API data
   const loadSaleReport = useCallback(async (fDate = activeFromDate, tDate = activeToDate) => {
@@ -123,6 +124,26 @@ export default function PosSaleReportPage() {
       nextState[d.date] = !expand;
     });
     setCollapsedDates(nextState);
+  };
+
+  const toggleCategory = (catKey) => {
+    setCollapsedCategories((prev) => ({
+      ...prev,
+      [catKey]: !prev[catKey],
+    }));
+  };
+
+  const handleToggleAllCategories = (expand) => {
+    const nextState = {};
+    dateGroups.forEach((group) => {
+      if (Array.isArray(group.categories)) {
+        group.categories.forEach((cat, catIdx) => {
+          const catKey = `${group.date}-${cat.category_id ?? cat.category_name ?? catIdx}`;
+          nextState[catKey] = !expand;
+        });
+      }
+    });
+    setCollapsedCategories(nextState);
   };
 
   // Filter products by search query (supports categories structure or fallback flat items)
@@ -362,24 +383,7 @@ export default function PosSaleReportPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleExportCSV}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-2xs transition cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5 text-slate-500" />
-              <span>Export CSV</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => window.print()}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-2xs transition cursor-pointer"
-            >
-              <Printer className="w-3.5 h-3.5 text-slate-500" />
-              <span>Print</span>
-            </button>
-          </div>
+        
         </div>
 
         {/* Date Filter & Search Bar */}
@@ -411,22 +415,44 @@ export default function PosSaleReportPage() {
               ))}
             </div>
 
-            <div className="flex items-center gap-3 text-xs text-slate-500">
-              <button
-                type="button"
-                onClick={() => handleToggleAll(true)}
-                className="text-emerald-700 hover:underline font-semibold cursor-pointer"
-              >
-                Expand All
-              </button>
+            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
+              <div className="flex items-center gap-1.5 font-medium">
+                <span className="text-slate-400">Dates:</span>
+                <button
+                  type="button"
+                  onClick={() => handleToggleAll(true)}
+                  className="text-emerald-700 hover:underline font-semibold cursor-pointer"
+                >
+                  Expand
+                </button>
+                <span>/</span>
+                <button
+                  type="button"
+                  onClick={() => handleToggleAll(false)}
+                  className="text-slate-600 hover:underline font-semibold cursor-pointer"
+                >
+                  Collapse
+                </button>
+              </div>
               <span>•</span>
-              <button
-                type="button"
-                onClick={() => handleToggleAll(false)}
-                className="text-slate-600 hover:underline font-semibold cursor-pointer"
-              >
-                Collapse All
-              </button>
+              <div className="flex items-center gap-1.5 font-medium">
+                <span className="text-slate-400">Categories:</span>
+                <button
+                  type="button"
+                  onClick={() => handleToggleAllCategories(true)}
+                  className="text-emerald-700 hover:underline font-semibold cursor-pointer"
+                >
+                  Expand All
+                </button>
+                <span>/</span>
+                <button
+                  type="button"
+                  onClick={() => handleToggleAllCategories(false)}
+                  className="text-slate-600 hover:underline font-semibold cursor-pointer"
+                >
+                  Collapse All
+                </button>
+              </div>
             </div>
           </div>
 
@@ -579,99 +605,115 @@ export default function PosSaleReportPage() {
                       {hasCategories ? (
                         /* Render Grouped by Category */
                         group.categories.map((cat, catIdx) => {
+                          const catKey = `${group.date}-${cat.category_id ?? cat.category_name ?? catIdx}`;
+                          const isCatCollapsed = !!collapsedCategories[catKey];
                           const catItems = cat.items || [];
                           return (
-                            <div key={cat.category_id || catIdx} className="p-0">
-                              {/* Category Header Row */}
-                              <div className="px-5 py-2.5 bg-slate-100/60 border-b border-slate-200/60 flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <Layers className="w-3.5 h-3.5 text-emerald-600" />
-                                  <span className="font-bold text-xs text-slate-800 uppercase tracking-wide">
+                            <div key={cat.category_id || catIdx} className="p-0 border-b border-slate-200/70 last:border-b-0">
+                              {/* Category Header Row - Clickable to Open/Close */}
+                              <div
+                                onClick={() => toggleCategory(catKey)}
+                                className="px-5 py-2.5 bg-slate-100/75 hover:bg-slate-200/70 border-b border-slate-200/60 flex items-center justify-between cursor-pointer select-none transition group/cat"
+                              >
+                                <div className="flex items-center gap-2.5">
+                                  <Layers className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                  <span className="font-bold text-xs text-slate-800 uppercase tracking-wide group-hover/cat:text-emerald-700 transition">
                                     {cat.category_name || "Uncategorized"}
                                   </span>
                                   <span className="text-[10px] font-semibold text-slate-500 bg-white px-2 py-0.5 rounded-full border border-slate-200">
-                                    {catItems.length} items
+                                    {catItems.length} {catItems.length === 1 ? "item" : "items"}
                                   </span>
                                 </div>
-                                <div className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-2.5 py-0.5 rounded-lg">
-                                  {cat.total_quantity || catItems.reduce((a, b) => a + (Number(b.total_quantity) || 0), 0)} Pcs
+                                <div className="flex items-center gap-3">
+                                  <div className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-2.5 py-0.5 rounded-lg">
+                                    {cat.total_quantity || catItems.reduce((a, b) => a + (Number(b.total_quantity) || 0), 0)} Pcs
+                                  </div>
+                                  <div className="p-0.5 text-slate-400 group-hover/cat:text-slate-700 transition">
+                                    {isCatCollapsed ? (
+                                      <ChevronDown className="w-4 h-4" />
+                                    ) : (
+                                      <ChevronUp className="w-4 h-4" />
+                                    )}
+                                  </div>
                                 </div>
                               </div>
 
                               {/* Category Products Table */}
-                              <div className="overflow-x-auto">
-                                <table className="w-full table-fixed text-left text-xs border-collapse">
-                                  <thead>
-                                    <tr className="bg-slate-50/70 border-b border-slate-200 text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                                      <th className="py-2.5 px-4 w-[10%] text-center">SL No</th>
-                                      <th className="py-2.5 px-4 w-[50%] text-left">Product Name & SKU</th>
-                                      <th className="py-2.5 px-4 w-[20%] text-center">Variant / Size</th>
-                                      <th className="py-2.5 px-4 w-[20%] text-center">Sell Quantity</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-slate-100">
-                                    {catItems.map((item, idx) => {
-                                      const imgSrc = getProductImageUrl(item.image);
-                                      return (
-                                        <tr
-                                          key={`${group.date}-${cat.category_id}-${item.product_id}-${item.variant_id}-${idx}`}
-                                          className="hover:bg-emerald-50/30 transition duration-150 group"
-                                        >
-                                          {/* SL No */}
-                                          <td className="py-3 px-4 text-center text-slate-400 font-semibold">
-                                            {item.sl_no || idx + 1}
-                                          </td>
+                              {!isCatCollapsed && (
+                                <div className="overflow-x-auto">
+                                  <table className="w-full table-fixed text-left text-xs border-collapse">
+                                    <thead>
+                                      <tr className="bg-slate-50/70 border-b border-slate-200 text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                                        <th className="py-2.5 px-4 w-[10%] text-center">SL No</th>
+                                        <th className="py-2.5 px-4 w-[50%] text-left">Product Name & SKU</th>
+                                        <th className="py-2.5 px-4 w-[20%] text-center">Variant / Size</th>
+                                        <th className="py-2.5 px-4 w-[20%] text-center">Sell Quantity</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                      {catItems.map((item, idx) => {
+                                        const imgSrc = getProductImageUrl(item.image);
+                                        return (
+                                          <tr
+                                            key={`${group.date}-${cat.category_id}-${item.product_id}-${item.variant_id}-${idx}`}
+                                            className="hover:bg-emerald-50/30 transition duration-150 group"
+                                          >
+                                            {/* SL No */}
+                                            <td className="py-3 px-4 text-center text-slate-400 font-semibold">
+                                              {item.sl_no || idx + 1}
+                                            </td>
 
-                                          {/* Product Name & Image */}
-                                          <td className="py-3 px-4">
-                                            <div className="flex items-center gap-3">
-                                              <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200/80 overflow-hidden shrink-0 flex items-center justify-center shadow-2xs">
-                                                {imgSrc ? (
-                                                  <img
-                                                    src={imgSrc}
-                                                    alt={item.name}
-                                                    className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-                                                    onError={(e) => {
-                                                      e.target.style.display = "none";
-                                                    }}
-                                                  />
-                                                ) : (
-                                                  <ShoppingBag className="w-4 h-4 text-slate-400" />
-                                                )}
+                                            {/* Product Name & Image */}
+                                            <td className="py-3 px-4">
+                                              <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200/80 overflow-hidden shrink-0 flex items-center justify-center shadow-2xs">
+                                                  {imgSrc ? (
+                                                    <img
+                                                      src={imgSrc}
+                                                      alt={item.name}
+                                                      className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                                                      onError={(e) => {
+                                                        e.target.style.display = "none";
+                                                      }}
+                                                    />
+                                                  ) : (
+                                                    <ShoppingBag className="w-4 h-4 text-slate-400" />
+                                                  )}
+                                                </div>
+                                                <div className="min-w-0 pr-2">
+                                                  <span
+                                                    className="font-bold text-slate-900 block leading-snug truncate group-hover:text-emerald-700 transition"
+                                                    title={item.name}
+                                                  >
+                                                    {item.name}
+                                                  </span>
+                                                  <span className="text-[11px] text-slate-500 font-mono font-medium block mt-0.5">
+                                                    SKU : <span className="text-slate-700 font-bold">{item.sku || "N/A"}</span>
+                                                  </span>
+                                                </div>
                                               </div>
-                                              <div className="min-w-0 pr-2">
-                                                <span
-                                                  className="font-bold text-slate-900 block leading-snug truncate group-hover:text-emerald-700 transition"
-                                                  title={item.name}
-                                                >
-                                                  {item.name}
-                                                </span>
-                                                <span className="text-[11px] text-slate-500 font-mono font-medium block mt-0.5">
-                                                  SKU : <span className="text-slate-700 font-bold">{item.sku || "N/A"}</span>
-                                                </span>
-                                              </div>
-                                            </div>
-                                          </td>
+                                            </td>
 
-                                          {/* Variant / Size */}
-                                          <td className="py-3 px-4 text-center">
-                                            <span className="text-xs font-semibold text-slate-700 bg-slate-100/90 hover:bg-slate-200/70 border border-slate-200/70 px-3 py-1 rounded-lg inline-block min-w-[50px] transition">
-                                              {item.variant || "Standard"}
-                                            </span>
-                                          </td>
+                                            {/* Variant / Size */}
+                                            <td className="py-3 px-4 text-center">
+                                              <span className="text-xs font-semibold text-slate-700 bg-slate-100/90 hover:bg-slate-200/70 border border-slate-200/70 px-3 py-1 rounded-lg inline-block min-w-[50px] transition">
+                                                {item.variant || "Standard"}
+                                              </span>
+                                            </td>
 
-                                          {/* Sell Quantity - Highlighted */}
-                                          <td className="py-3 px-4 text-center">
-                                            <span className="px-3.5 py-1 rounded-lg bg-emerald-600 text-white font-bold text-xs shadow-2xs inline-block min-w-[54px]">
-                                              {item.total_quantity || 0} Pcs
-                                            </span>
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                              </div>
+                                            {/* Sell Quantity - Highlighted */}
+                                            <td className="py-3 px-4 text-center">
+                                              <span className="px-3.5 py-1 rounded-lg bg-emerald-600 text-white font-bold text-xs shadow-2xs inline-block min-w-[54px]">
+                                                {item.total_quantity || 0} Pcs
+                                              </span>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
                             </div>
                           );
                         })

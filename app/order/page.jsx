@@ -11,7 +11,7 @@ import { api } from "@/lib/api";
 export default function OrderPage() {
   const [ordersResponse, setOrdersResponse] = useState({
     data: [],
-    counts: { all: 0, new: "0", completed: "0", remark: "0" },
+    counts: { all: 0, new: "0", completed: "0", remark: "0", markus: "0" },
     total: 0,
     totalPages: 1,
     page: 1,
@@ -58,15 +58,21 @@ export default function OrderPage() {
   const handleUpdateStatus = async (orderId, newStatus) => {
     const targetOrder = ordersResponse.data.find((o) => o.id === orderId);
 
-    if (newStatus === "2" || newStatus === 2) {
+    if (String(newStatus) === "2") {
       setRemarkOrder(targetOrder);
       setPendingStatusChange({ orderId, status: 2 });
       return;
     }
 
-    const statusLabel = newStatus === "1" || newStatus === 1 ? "Completed" : "New";
+    let statusLabel = "New";
+    if (String(newStatus) === "1") {
+      statusLabel = "Completed";
+    } else if (String(newStatus) === "4") {
+      statusLabel = "Markus Delivery List";
+    }
+
     if (window.confirm(`Are you sure you want to change order status to "${statusLabel}"?`)) {
-      await api.updateOrderStatus(orderId, newStatus);
+      await api.updateOrderStatus(orderId, Number(newStatus));
       setToastMessage(`Order status updated to ${statusLabel}`);
       loadOrders();
       setTimeout(() => setToastMessage(""), 3500);
