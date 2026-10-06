@@ -155,14 +155,14 @@ function ProfitLossMonthContent() {
                   <th className="py-3 px-3 w-32">Date</th>
                   <th className="py-3 px-3">Product Purchase (₹)</th>
                   <th className="py-3 px-3">Product Sale (₹)</th>
-                  <th className="py-3 px-3">Profit (₹)</th>
+                  <th className="py-3 px-3">Product Profit (₹)</th>
                   <th className="py-3 px-3">Shipping Charge (₹)</th>
                   <th className="py-3 px-3">Expense (₹)</th>
                   <th className="py-3 px-3">Discount (₹)</th>
                   <th className="py-3 px-4">
                     <div>NET Profit (₹)</div>
                     <span className="block text-[10px] font-normal text-slate-400 lowercase tracking-normal">
-                      (profit + shipping charge - discount)
+                      (Product profit + Shipping Charge - Discount)
                     </span>
                   </th>
                 </tr>
