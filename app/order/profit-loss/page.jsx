@@ -104,11 +104,17 @@ function ProfitLossContent() {
                 <tr className="bg-slate-50/90 border-y border-slate-200 font-bold text-slate-800 uppercase tracking-wider">
                   <th className="py-3 px-4 w-16">Sl.No</th>
                   <th className="py-3 px-4">Month</th>
-                  <th className="py-3 px-4">Sale</th>
-                  <th className="py-3 px-4">Profit</th>
-                  <th className="py-3 px-4">Tax</th>
-                  <th className="py-3 px-4">Discount</th>
-                  <th className="py-3 px-4">NET</th>
+                  <th className="py-3 px-4">Product Purchase (₹)</th>
+                  <th className="py-3 px-4">Product Sale (₹)</th>
+                  <th className="py-3 px-4">Profit (₹)</th>
+                  <th className="py-3 px-4">Shipping Charge (₹)</th>
+                  <th className="py-3 px-4">Discount (₹)</th>
+                  <th className="py-3 px-4">
+                    <div>NET Profit (₹)</div>
+                    <span className="block text-[10px] font-normal text-slate-400 lowercase tracking-normal">
+                      (profit + shipping charge - discount)
+                    </span>
+                  </th>
                   <th className="py-3 px-4 text-center w-20">View</th>
                 </tr>
               </thead>
@@ -117,6 +123,7 @@ function ProfitLossContent() {
                   Array.from({ length: 6 }).map((_, idx) => (
                     <tr key={idx} className="animate-pulse">
                       <td className="py-3.5 px-4"><div className="h-4 bg-slate-200 rounded w-6"></div></td>
+                      <td className="py-3.5 px-4"><div className="h-4 bg-slate-200 rounded w-24"></div></td>
                       <td className="py-3.5 px-4"><div className="h-4 bg-slate-200 rounded w-24"></div></td>
                       <td className="py-3.5 px-4"><div className="h-4 bg-slate-200 rounded w-16"></div></td>
                       <td className="py-3.5 px-4"><div className="h-4 bg-slate-200 rounded w-16"></div></td>
@@ -137,6 +144,8 @@ function ProfitLossContent() {
                     const saleVal = row.salePrice ?? row.sale ?? 0;
                     const profitVal = row.profit ?? 0;
                     const netVal = row.Net ?? row.net ?? 0;
+                    const purchaseVal = row.purchasePrice ?? 0;
+                    const shippingCharge = row.shipping ?? 0;
 
                     return (
                       <tr key={idx} className="hover:bg-slate-50/60 transition">
@@ -147,13 +156,16 @@ function ProfitLossContent() {
                           {row.MonthName}
                         </td>
                         <td className="py-3.5 px-4 font-medium text-slate-800">
+                          {purchaseVal > 0 ? `₹ ${purchaseVal.toLocaleString()}` : "0"}
+                        </td>
+                        <td className="py-3.5 px-4 font-medium text-slate-800">
                           {saleVal > 0 ? `₹ ${saleVal.toLocaleString()}` : "0"}
                         </td>
                         <td className="py-3.5 px-4 font-bold text-emerald-700">
                           {profitVal > 0 ? `₹ ${profitVal.toLocaleString()}` : "0"}
                         </td>
                         <td className="py-3.5 px-4 text-slate-500">
-                          {row.taxPrice ?? row.tax ?? 0}
+                           {shippingCharge > 0 ? `₹ ${shippingCharge.toLocaleString()}` : "0"}
                         </td>
                         <td className="py-3.5 px-4 text-slate-500">
                           {row.discountPrice ?? row.discount ?? 0}

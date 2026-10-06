@@ -153,12 +153,18 @@ function ProfitLossMonthContent() {
                 <tr className="bg-slate-50/90 border-y border-slate-200 font-bold text-slate-800 uppercase tracking-wider">
                   <th className="py-3 px-3 w-14 text-center">Sl.No</th>
                   <th className="py-3 px-3 w-32">Date</th>
-                  <th className="py-3 px-3">Sale</th>
-                  <th className="py-3 px-3">Total Profit</th>
-                  <th className="py-3 px-3">Tax</th>
-                  <th className="py-3 px-3">Expense</th>
-                  <th className="py-3 px-3">Discount</th>
-                  <th className="py-3 px-3">NET</th>
+                  <th className="py-3 px-3">Product Purchase (₹)</th>
+                  <th className="py-3 px-3">Product Sale (₹)</th>
+                  <th className="py-3 px-3">Profit (₹)</th>
+                  <th className="py-3 px-3">Shipping Charge (₹)</th>
+                  <th className="py-3 px-3">Expense (₹)</th>
+                  <th className="py-3 px-3">Discount (₹)</th>
+                  <th className="py-3 px-4">
+                    <div>NET Profit (₹)</div>
+                    <span className="block text-[10px] font-normal text-slate-400 lowercase tracking-normal">
+                      (profit + shipping charge - discount)
+                    </span>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -168,6 +174,7 @@ function ProfitLossMonthContent() {
                       <td className="py-3 px-3 text-center"><div className="h-4 bg-slate-200 rounded w-6 mx-auto"></div></td>
                       <td className="py-3 px-3"><div className="h-4 bg-slate-200 rounded w-24"></div></td>
                       <td className="py-3 px-3"><div className="h-4 bg-slate-200 rounded w-16"></div></td>
+                        <td className="py-3 px-3"><div className="h-4 bg-slate-200 rounded w-16"></div></td>
                       <td className="py-3 px-3"><div className="h-4 bg-slate-200 rounded w-16"></div></td>
                       <td className="py-3 px-3"><div className="h-4 bg-slate-200 rounded w-8"></div></td>
                       <td className="py-3 px-3"><div className="h-4 bg-slate-200 rounded w-8"></div></td>
@@ -186,6 +193,8 @@ function ProfitLossMonthContent() {
                     const saleVal = row.salePrice ?? row.sale ?? 0;
                     const profitVal = row.profit ?? 0;
                     const netVal = row.Net ?? row.net ?? 0;
+                    const shippingCharge = row.shipping ?? 0;
+                    const purchaseAmount = row.purchasePrice ?? 0;
 
                     return (
                       <tr key={idx} className="hover:bg-slate-50/60 transition">
@@ -195,6 +204,9 @@ function ProfitLossMonthContent() {
                         <td className="py-3 px-3 font-semibold text-slate-900 font-mono">
                           {row.date || row.MonthName}
                         </td>
+                          <td className="py-3 px-3 font-medium text-slate-800">
+                          {purchaseAmount > 0 ? `₹ ${purchaseAmount.toLocaleString()}` : "0"}
+                        </td>
                         <td className="py-3 px-3 font-medium text-slate-800">
                           {saleVal > 0 ? `₹ ${saleVal.toLocaleString()}` : "0"}
                         </td>
@@ -202,7 +214,7 @@ function ProfitLossMonthContent() {
                           {profitVal > 0 ? `₹ ${profitVal.toLocaleString()}` : "0"}
                         </td>
                         <td className="py-3 px-3 text-slate-500">
-                          {row.taxPrice ?? row.tax ?? 0}
+                          {shippingCharge > 0 ? `₹ ${shippingCharge.toLocaleString()}` : "0"}
                         </td>
                         <td className="py-3 px-3 text-slate-500">
                           {row.expense ?? 0}
